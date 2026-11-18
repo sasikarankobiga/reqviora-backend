@@ -1,18 +1,20 @@
+using Microsoft.EntityFrameworkCore;
 using Reqviora.Application.Features.Projects.Interfaces;
 using Reqviora.Domain.Entities;
+using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Infrastructure.Repositories;
 
-public sealed class ProjectRepository : IProjectRepository
+public sealed class ProjectRepository(ReqvioraDbContext dbContext) : IProjectRepository
 {
-    private readonly List<Project> _projects = [];
+    public async Task<IReadOnlyCollection<Project>> GetAllAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default) =>
+        await dbContext.Projects
+            .AsNoTracking()
+            .Where(project => project.OwnerId == ownerId)
+            .ToArrayAsync(cancellationToken);
 
-    public Task<IReadOnlyCollection<Project>> GetAllAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyCollection<Project>>(_projects.ToArray());
-
-    public Task AddAsync(Project project, CancellationToken cancellationToken = default)
-    {
-        _projects.Add(project);
-        return Task.CompletedTask;
-    }
+    public async Task AddAsync(Project project, CancellationToken cancellationToken = default) =>
+        await dbContext.Projects.AddAsync(project, cancellationToken);
 }
