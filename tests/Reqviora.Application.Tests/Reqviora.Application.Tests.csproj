@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
+    <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -19,9 +19,8 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <ProjectReference Include="..\..\src\Reqviora.Application\Reqviora.Application.csproj" />
-    <ProjectReference Include="..\..\src\Reqviora.Domain\Reqviora.Domain.csproj" />
-    <ProjectReference Include="..\..\src\Reqviora.Infrastructure\Reqviora.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Reqviora.Application/Reqviora.Application.csproj" />
+    <ProjectReference Include="../../src/Reqviora.Domain/Reqviora.Domain.csproj" />
+    <ProjectReference Include="../../src/Reqviora.Infrastructure/Reqviora.Infrastructure.csproj" />
   </ItemGroup>
-
 </Project>
