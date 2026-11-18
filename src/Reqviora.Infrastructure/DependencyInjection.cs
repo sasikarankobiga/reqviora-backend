@@ -1,3 +1,4 @@
+
 using System.Text;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -21,25 +22,33 @@ public static class DependencyInjection
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("ReqvioraDatabase");
+        var connectionString =
+            configuration.GetConnectionString("ReqvioraDatabase");
+
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             throw new InvalidOperationException(
                 "Connection string 'ReqvioraDatabase' is required. Configure it with user secrets or an environment variable.");
         }
 
+        // PostgreSQL Database Configuration
         services.AddDbContext<ReqvioraDbContext>(options =>
             options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsAssembly(typeof(ReqvioraDbContext).Assembly.FullName)));
+                npgsql.MigrationsAssembly(
+                    typeof(ReqvioraDbContext).Assembly.FullName)));
 
+        // Database Health Check
         services.AddHealthChecks()
             .AddDbContextCheck<ReqvioraDbContext>(
                 name: "postgresql",
                 tags: ["ready"]);
 
+        // JWT Configuration
         var jwtSection = configuration.GetSection(JwtOptions.SectionName);
         var jwtOptions = jwtSection.Get<JwtOptions>()
-            ?? throw new InvalidOperationException("JWT configuration is required.");
+            ?? throw new InvalidOperationException(
+                "JWT configuration is required.");
+
         if (string.IsNullOrWhiteSpace(jwtOptions.Issuer) ||
             string.IsNullOrWhiteSpace(jwtOptions.Audience) ||
             jwtOptions.Key.Length < 32 ||
@@ -52,30 +61,45 @@ public static class DependencyInjection
 
         services.Configure<JwtOptions>(jwtSection);
         services.AddSingleton(TimeProvider.System);
+
+        // Authentication
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
                 options.MapInboundClaims = false;
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidIssuer = jwtOptions.Issuer,
-                    ValidateAudience = true,
-                    ValidAudience = jwtOptions.Audience,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
-                    ValidateLifetime = true,
-                    ClockSkew = TimeSpan.FromSeconds(30),
-                    NameClaimType = ClaimTypes.Name,
-                    RoleClaimType = ClaimTypes.Role
-                };
+
+                options.TokenValidationParameters =
+                    new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = jwtOptions.Issuer,
+
+                        ValidateAudience = true,
+                        ValidAudience = jwtOptions.Audience,
+
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(
+                            Encoding.UTF8.GetBytes(jwtOptions.Key)),
+
+                        ValidateLifetime = true,
+                        ClockSkew = TimeSpan.FromSeconds(30),
+
+                        NameClaimType = ClaimTypes.Name,
+                        RoleClaimType = ClaimTypes.Role
+                    };
             });
+
         services.AddAuthorization();
 
+        // Service Registrations
         return services
             .AddScoped<IUserRepository, UserRepository>()
             .AddScoped<IProjectRepository, ProjectRepository>()
             .AddScoped<IUnitOfWork, UnitOfWork>()
+
+            // Rashmina - Project Draft Save / Resume
+            .AddScoped<ProjectDraftService>()
+
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IFileStorageService, FileStorageService>()

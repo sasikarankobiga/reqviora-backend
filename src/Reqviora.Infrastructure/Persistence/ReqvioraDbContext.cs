@@ -23,6 +23,7 @@ public sealed class ReqvioraDbContext(
     // Rashmina - Database Entities
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +46,7 @@ public sealed class ReqvioraDbContext(
             entity.HasIndex(token => new { token.UserId, token.ExpiresAt });
             entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
             entity.Property(token => token.ReplacedByTokenHash).HasMaxLength(64);
+
             entity.HasOne(token => token.User)
                 .WithMany()
                 .HasForeignKey(token => token.UserId)
@@ -62,8 +64,13 @@ public sealed class ReqvioraDbContext(
         modelBuilder.Entity<Project>(entity =>
         {
             entity.HasIndex(project => project.OwnerId);
-            entity.Property(project => project.Name).HasMaxLength(200).IsRequired();
-            entity.Property(project => project.Description).HasMaxLength(4000);
+
+            entity.Property(project => project.Name)
+                .HasMaxLength(200)
+                .IsRequired();
+
+            entity.Property(project => project.Description)
+                .HasMaxLength(4000);
 
             entity.HasOne<User>()
                 .WithMany()
@@ -114,41 +121,79 @@ public sealed class ReqvioraDbContext(
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // Project Draft Configuration - Rashmina Task 3
+        modelBuilder.Entity<ProjectDraft>(entity =>
+        {
+            entity.HasKey(draft => draft.Id);
+
+            // One current draft per project
+            entity.HasIndex(draft => draft.ProjectId)
+                .IsUnique();
+
+            entity.Property(draft => draft.DraftJson)
+                .IsRequired();
+
+            entity.Property(draft => draft.Version)
+                .IsRequired();
+
+            entity.Property(draft => draft.ConcurrencyToken)
+                .IsConcurrencyToken()
+                .IsRequired();
+
+            entity.Property(draft => draft.UpdatedAtUtc)
+                .IsRequired();
+
+            entity.HasOne<Project>()
+                .WithMany()
+                .HasForeignKey(draft => draft.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // Existing Team Configurations
         modelBuilder.Entity<Approval>()
             .Property(approval => approval.Status)
-            .HasMaxLength(50).IsRequired();
+            .HasMaxLength(50)
+            .IsRequired();
 
         modelBuilder.Entity<Blueprint>()
             .Property(blueprint => blueprint.Name)
-            .HasMaxLength(200).IsRequired();
+            .HasMaxLength(200)
+            .IsRequired();
 
         modelBuilder.Entity<Component>()
             .Property(component => component.Type)
-            .HasMaxLength(100).IsRequired();
+            .HasMaxLength(100)
+            .IsRequired();
 
         modelBuilder.Entity<Feature>()
             .Property(feature => feature.Name)
-            .HasMaxLength(200).IsRequired();
+            .HasMaxLength(200)
+            .IsRequired();
 
         modelBuilder.Entity<NavigationRoute>()
             .Property(route => route.Path)
-            .HasMaxLength(500).IsRequired();
+            .HasMaxLength(500)
+            .IsRequired();
 
         modelBuilder.Entity<ProjectDocument>(entity =>
         {
             entity.Property(document => document.FileName)
-                .HasMaxLength(255).IsRequired();
+                .HasMaxLength(255)
+                .IsRequired();
+
             entity.Property(document => document.StoragePath)
-                .HasMaxLength(1000).IsRequired();
+                .HasMaxLength(1000)
+                .IsRequired();
         });
 
         modelBuilder.Entity<Requirement>()
             .Property(requirement => requirement.Title)
-            .HasMaxLength(300).IsRequired();
+            .HasMaxLength(300)
+            .IsRequired();
 
         modelBuilder.Entity<Screen>()
             .Property(screen => screen.Name)
-            .HasMaxLength(200).IsRequired();
+            .HasMaxLength(200)
+            .IsRequired();
     }
 }
