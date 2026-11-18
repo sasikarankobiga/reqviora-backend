@@ -230,8 +230,8 @@ public sealed class SafeRegenerationService(
                     return false;
 
                 if (action.Kind is not (
-                    "navigate" or "back" or
-                    "mock_submit" or "show_message"))
+                    "navigate" or "submit" or
+                    "update" or "openDialog" or "closeDialog"))
                     return false;
 
                 if (action.Kind == "navigate")

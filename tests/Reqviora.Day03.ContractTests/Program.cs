@@ -43,11 +43,14 @@ void Reject(string name, Action action)
             return;
         }
 
-        throw new Exception("Expected operation to be rejected.");
+        throw new Exception(
+            "Expected operation to be rejected.");
     });
 }
 
-void Ensure(bool condition, string message = "Assertion failed")
+void Ensure(
+    bool condition,
+    string message = "Assertion failed")
 {
     if (!condition)
         throw new Exception(message);
@@ -72,19 +75,25 @@ var candidate = new RequirementCandidate(
     "Users should access a login screen.",
     "en",
     0.92m,
-    [new CandidateEvidence(
-        source.SourceId, source.Locator, source.Quote)]
+    [
+        new CandidateEvidence(
+            source.SourceId,
+            source.Locator,
+            source.Quote)
+    ]
 );
 
-var extractionPayload = new RequirementExtractionPayload(
-    "1.0",
-    [candidate]
-);
+var extractionPayload =
+    new RequirementExtractionPayload(
+        "1.0",
+        [candidate]
+    );
 
 var options = new JsonSerializerOptions(
     JsonSerializerDefaults.Web);
 
-string SerializePayload(RequirementExtractionPayload payload) =>
+string SerializePayload(
+    RequirementExtractionPayload payload) =>
     JsonSerializer.Serialize(payload, options);
 
 var aiRequest = new AiProviderRequest(
@@ -96,7 +105,10 @@ var aiRequest = new AiProviderRequest(
 );
 
 AiProviderResponse Response(string json) => new(
-    requestId, AiRunStatus.Completed, json, null
+    requestId,
+    AiRunStatus.Completed,
+    json,
+    null
 );
 
 RequirementExtractionPayload Extract(
@@ -126,12 +138,15 @@ RequirementReviewDecision Decision(
     );
 
 var accepted = RequirementReviewService.Apply(
-    suggested, Decision(RequirementDecisionKind.Accept)
+    suggested,
+    Decision(RequirementDecisionKind.Accept)
 ).Requirement;
 
 var generator = new BlueprintDraftGenerator(
-    new Day03StarterComponentRegistry());
+    new Day03StarterComponentRegistry()
+);
 
+// FIXED: Both action and navigation use NAV-LOGIN-HOME.
 BlueprintGenerationRequest Plan(
     int revision = 1,
     string variant = "filled") =>
@@ -139,37 +154,58 @@ BlueprintGenerationRequest Plan(
         projectId,
         "BP-KOBIGA-001",
         revision,
+
         [accepted],
-        [new ProposedFeature(
-            "FEAT-LOGIN",
-            "Login",
-            ["REQ-LOGIN-01"])],
+
+        [
+            new ProposedFeature(
+                "FEAT-LOGIN",
+                "Login",
+                ["REQ-LOGIN-01"])
+        ],
+
         [
             new ProposedScreen(
-                "SCR-LOGIN", "Login", ["FEAT-LOGIN"]),
+                "SCR-LOGIN",
+                "Login",
+                ["FEAT-LOGIN"]),
+
             new ProposedScreen(
-                "SCR-HOME", "Home", ["FEAT-LOGIN"])
+                "SCR-HOME",
+                "Home",
+                ["FEAT-LOGIN"])
         ],
-        [new ProposedComponent(
-            "CMP-LOGIN-BTN",
-            "SCR-LOGIN",
-            "button",
-            variant)],
-        [new ProposedAction(
-            "ACT-LOGIN",
-            "CMP-LOGIN-BTN",
-            "navigate",
-            "ROUTE-LOGIN-HOME")],
-        [new ProposedNavigation(
-            "ROUTE-LOGIN-HOME",
-            "SCR-LOGIN",
-            "SCR-HOME",
-            "ACT-LOGIN")]
+
+        [
+            new ProposedComponent(
+                "CMP-LOGIN-BTN",
+                "SCR-LOGIN",
+                "Button",
+                variant)
+        ],
+
+        [
+            new ProposedAction(
+                "ACT-LOGIN",
+                "CMP-LOGIN-BTN",
+                "navigate",
+                "NAV-LOGIN-HOME")
+        ],
+
+        [
+            new ProposedNavigation(
+                "NAV-LOGIN-HOME",
+                "SCR-LOGIN",
+                "SCR-HOME",
+                "ACT-LOGIN")
+        ]
     );
 
 var current = generator.Generate(Plan());
+
 var regeneration = new SafeRegenerationService(
-    new Day03StarterComponentRegistry());
+    new Day03StarterComponentRegistry()
+);
 
 SafeRegenerationRequest Policy(
     int revision = 1,
@@ -183,90 +219,151 @@ SafeRegenerationRequest Policy(
         components ?? Array.Empty<string>()
     );
 
-// TASK 8: EXTRACTION
+// =====================================================
+// TASK 8: AI REQUIREMENT EXTRACTION
+// =====================================================
 
 Test("Valid AI candidates", () =>
 {
     var payload = Extract(extractionPayload);
+
     Ensure(payload.Candidates.Count == 1);
 });
 
 Test("Candidate remains unconfirmed", () =>
+{
     Ensure(
-        suggested.Status == RequirementReviewStatus.Suggested));
+        suggested.Status ==
+        RequirementReviewStatus.Suggested);
+});
 
 Test("Valid Tamil candidate", () =>
 {
-    var tamil = candidate with { LanguageCode = "ta-LK" };
-    Ensure(Extract(new("1.0", [tamil])).Candidates.Count == 1);
+    var tamil = candidate with
+    {
+        LanguageCode = "ta-LK"
+    };
+
+    Ensure(
+        Extract(new("1.0", [tamil]))
+            .Candidates.Count == 1);
 });
 
 Test("Empty extraction candidates allowed", () =>
-    Ensure(Extract(new("1.0", [])).Candidates.Count == 0));
+{
+    Ensure(
+        Extract(new("1.0", []))
+            .Candidates.Count == 0);
+});
 
 Reject("Duplicate AI candidate rejected", () =>
-    Extract(new("1.0", [candidate, candidate])));
+{
+    Extract(new("1.0", [candidate, candidate]));
+});
 
 Reject("Unknown source evidence rejected", () =>
-    Extract(new("1.0",
-    [
-        candidate with
-        {
-            Evidence =
-            [
-                new CandidateEvidence(
-                    "SRC-UNKNOWN", "page 9", "Unknown")
-            ]
-        }
-    ])));
+{
+    Extract(new(
+        "1.0",
+        [
+            candidate with
+            {
+                Evidence =
+                [
+                    new CandidateEvidence(
+                        "SRC-UNKNOWN",
+                        "page 9",
+                        "Unknown")
+                ]
+            }
+        ]
+    ));
+});
 
 Reject("Missing candidate evidence rejected", () =>
-    Extract(new("1.0",
-        [candidate with { Evidence = [] }])));
+{
+    Extract(new(
+        "1.0",
+        [
+            candidate with
+            {
+                Evidence = []
+            }
+        ]
+    ));
+});
 
 Reject("Out of range confidence rejected", () =>
-    Extract(new("1.0",
-        [candidate with { Confidence = 1.4m }])));
+{
+    Extract(new(
+        "1.0",
+        [
+            candidate with
+            {
+                Confidence = 1.4m
+            }
+        ]
+    ));
+});
 
 Reject("Unsupported extraction contract rejected", () =>
-    Extract(new("2.0", [candidate])));
+{
+    Extract(new("2.0", [candidate]));
+});
 
 Reject("Wrong AI request ID rejected", () =>
+{
     RequirementExtractionValidator.Parse(
         aiRequest,
         new AiProviderResponse(
             Guid.NewGuid(),
             AiRunStatus.Completed,
             SerializePayload(extractionPayload),
-            null),
-        [source]));
+            null
+        ),
+        [source]
+    );
+});
 
 Reject("Non-extraction AI operation rejected", () =>
+{
     RequirementExtractionValidator.Parse(
         aiRequest with
         {
             Operation = AiOperation.ScreenSuggestion
         },
         Response(SerializePayload(extractionPayload)),
-        [source]));
+        [source]
+    );
+});
 
 Reject("AI cannot insert approved status", () =>
 {
     string json = SerializePayload(extractionPayload)
         .Replace(
             "\"confidence\":",
-            "\"status\":\"confirmed\",\"confidence\":");
+            "\"status\":\"confirmed\",\"confidence\":"
+        );
 
     RequirementExtractionValidator.Parse(
-        aiRequest, Response(json), [source]);
+        aiRequest,
+        Response(json),
+        [source]
+    );
 });
 
-// TASK 9: REVIEW AND CLARIFICATION
+// =====================================================
+// TASK 9: REQUIREMENT REVIEW & CLARIFICATION
+// =====================================================
 
 Test("Explicit accept confirms requirement", () =>
+{
     Ensure(
-        accepted.Status == RequirementReviewStatus.Confirmed &&
-        accepted.ConfirmedBy == reviewerId));
+        accepted.Status ==
+        RequirementReviewStatus.Confirmed
+        &&
+        accepted.ConfirmedBy == reviewerId);
+});
 
 Test("Edit returns requirement to suggested", () =>
 {
@@ -276,26 +373,42 @@ Test("Edit returns requirement to suggested", () =>
             RequirementDecisionKind.Edit,
             2,
             "Updated login",
-            "User needs an updated login screen.")
+            "User needs an updated login screen."
+        )
     ).Requirement;
 
     Ensure(
-        edited.Status == RequirementReviewStatus.Suggested &&
-        edited.ConfirmedBy is null &&
+        edited.Status ==
+        RequirementReviewStatus.Suggested
+        &&
+        edited.ConfirmedBy is null
+        &&
         edited.Revision == 3);
 });
 
 Test("Reject makes requirement rejected", () =>
-    Ensure(RequirementReviewService.Apply(
+{
+    var result = RequirementReviewService.Apply(
         suggested,
-        Decision(RequirementDecisionKind.Reject))
-        .Requirement.Status == RequirementReviewStatus.Rejected));
+        Decision(RequirementDecisionKind.Reject)
+    );
+
+    Ensure(
+        result.Requirement.Status ==
+        RequirementReviewStatus.Rejected);
+});
 
 Test("Defer makes requirement deferred", () =>
-    Ensure(RequirementReviewService.Apply(
+{
+    var result = RequirementReviewService.Apply(
         suggested,
-        Decision(RequirementDecisionKind.Defer))
-        .Requirement.Status == RequirementReviewStatus.Deferred));
+        Decision(RequirementDecisionKind.Defer)
+    );
+
+    Ensure(
+        result.Requirement.Status ==
+        RequirementReviewStatus.Deferred);
+});
 
 Test("Clarification answer does not approve", () =>
 {
@@ -303,72 +416,131 @@ Test("Clarification answer does not approve", () =>
         Guid.NewGuid(),
         suggested.Id,
         "Should login use email?",
-        null, 1, false);
+        null,
+        1,
+        false
+    );
 
     var answered = ClarificationService.Answer(
         question,
         new ClarificationAnswerRequest(
-            question.Id, 1, "Yes, email."));
+            question.Id,
+            1,
+            "Yes, email."
+        )
+    );
 
     Ensure(answered.IsResolved);
-    Ensure(suggested.Status ==
+
+    Ensure(
+        suggested.Status ==
         RequirementReviewStatus.Suggested);
 });
 
 Reject("Stale review revision rejected", () =>
+{
     RequirementReviewService.Apply(
         accepted,
-        Decision(RequirementDecisionKind.Edit, 1,
-            "Changed", "Description")));
+        Decision(
+            RequirementDecisionKind.Edit,
+            1,
+            "Changed",
+            "Description"
+        )
+    );
+});
 
 Reject("Confirmed requirement cannot auto-reconfirm", () =>
+{
     RequirementReviewService.Apply(
         accepted,
-        Decision(RequirementDecisionKind.Accept, 2)));
+        Decision(
+            RequirementDecisionKind.Accept,
+            2
+        )
+    );
+});
 
 Reject("Anonymous reviewer rejected", () =>
+{
     RequirementReviewService.Apply(
         suggested,
-        Decision(RequirementDecisionKind.Accept) with
+        Decision(RequirementDecisionKind.Accept)
+            with
         {
             ActorId = Guid.Empty
-        }));
+        }
+    );
+});
 
 Reject("Invalid empty edit rejected", () =>
+{
     RequirementReviewService.Apply(
         suggested,
-        Decision(RequirementDecisionKind.Edit, 1,
-            "", "Description")));
+        Decision(
+            RequirementDecisionKind.Edit,
+            1,
+            "",
+            "Description"
+        )
+    );
+});
 
+// =====================================================
 // TASK 10: BLUEPRINT GENERATION
+// =====================================================
 
 Test("Confirmed requirements generate draft", () =>
 {
     var blueprint = generator.Generate(Plan());
 
     Ensure(blueprint.Lifecycle == "draft");
+
     Ensure(blueprint.Requirements.Count == 1);
-    Ensure(blueprint.Requirements[0].Status == "confirmed");
-    Ensure(blueprint.Features[0].RequirementIds[0] ==
+
+    Ensure(
+        blueprint.Requirements[0].Status ==
+        "confirmed");
+
+    Ensure(
+        blueprint.Features[0].RequirementIds[0] ==
         "REQ-LOGIN-01");
 });
 
 Test("Navigation and component traceability", () =>
 {
-    Ensure(current.Navigation[0].TargetScreenId == "SCR-HOME");
-    Ensure(current.Components[0].ActionIds[0] == "ACT-LOGIN");
-    Ensure(current.Requirements[0].Evidence[0].SourceId ==
+    Ensure(
+        current.Navigation[0].TargetScreenId ==
+        "SCR-HOME");
+
+    Ensure(
+        current.Components[0].ActionIds[0] ==
+        "ACT-LOGIN");
+
+    Ensure(
+        current.Requirements[0].Evidence[0].SourceId ==
         "SRC-001");
 });
 
 Reject("Unconfirmed Blueprint requirement rejected", () =>
+{
     generator.Generate(
-        Plan() with { Requirements = [suggested] }));
+        Plan() with
+        {
+            Requirements = [suggested]
+        }
+    );
+});
 
 Reject("Unsupported Blueprint component rejected", () =>
-    generator.Generate(Plan(1, "unknown-variant")));
+{
+    generator.Generate(
+        Plan(1, "unknown-variant")
+    );
+});
 
 Reject("Broken feature requirement reference rejected", () =>
+{
     generator.Generate(
         Plan() with
         {
@@ -379,70 +551,110 @@ Reject("Broken feature requirement reference rejected", () =>
                     "Login",
                     ["REQ-MISSING"])
             ]
-        }));
+        }
+    );
+});
 
 Reject("Broken navigation reference rejected", () =>
+{
     generator.Generate(
         Plan() with
         {
             Navigation =
             [
                 new ProposedNavigation(
-                    "ROUTE-LOGIN-HOME",
+                    "NAV-LOGIN-HOME",
                     "SCR-LOGIN",
                     "SCR-MISSING",
                     "ACT-LOGIN")
             ]
-        }));
+        }
+    );
+});
 
 Reject("Duplicate screen ID rejected", () =>
+{
     generator.Generate(
         Plan() with
         {
             Screens =
             [
                 new ProposedScreen(
-                    "SCR-LOGIN", "Login", ["FEAT-LOGIN"]),
-                new ProposedScreen(
-                    "SCR-LOGIN", "Duplicate", ["FEAT-LOGIN"])
-            ]
-        }));
+                    "SCR-LOGIN",
+                    "Login",
+                    ["FEAT-LOGIN"]),
 
+                new ProposedScreen(
+                    "SCR-LOGIN",
+                    "Duplicate",
+                    ["FEAT-LOGIN"])
+            ]
+        }
+    );
+});
+
+// =====================================================
 // TASK 11: SAFE REGENERATION
+// =====================================================
 
 Test("Valid new draft revision accepted", () =>
 {
     var newer = generator.Generate(Plan(2));
+
     var result = regeneration.TryApply(
-        current, newer, Policy());
+        current,
+        newer,
+        Policy()
+    );
 
     Ensure(result.Applied);
+
     Ensure(result.Blueprint.Revision == 2);
+
     Ensure(current.Revision == 1);
 });
 
 Test("Stale regeneration rejected", () =>
 {
     var newer = generator.Generate(Plan(2));
+
     var result = regeneration.TryApply(
-        current, newer, Policy(99));
+        current,
+        newer,
+        Policy(99)
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "REVISION_CONFLICT");
-    Ensure(ReferenceEquals(result.Blueprint, current));
+
+    Ensure(
+        result.Reason == "REVISION_CONFLICT");
+
+    Ensure(
+        ReferenceEquals(
+            result.Blueprint,
+            current));
 });
 
 Test("Protected component edits preserved", () =>
 {
-    var changed = generator.Generate(Plan(2, "outlined"));
+    var changed = generator.Generate(
+        Plan(2, "outlined")
+    );
 
     var result = regeneration.TryApply(
         current,
         changed,
-        Policy(1, components: ["CMP-LOGIN-BTN"]));
+        Policy(
+            1,
+            components: ["CMP-LOGIN-BTN"]
+        )
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "PROTECTED_COMPONENT_CHANGED");
+
+    Ensure(
+        result.Reason ==
+        "PROTECTED_COMPONENT_CHANGED");
 });
 
 Test("Protected screen changes rejected", () =>
@@ -452,10 +664,13 @@ Test("Protected screen changes rejected", () =>
         Screens =
         [
             new ProposedScreen(
-                "SCR-LOGIN", "Modified Login",
+                "SCR-LOGIN",
+                "Modified Login",
                 ["FEAT-LOGIN"]),
+
             new ProposedScreen(
-                "SCR-HOME", "Home",
+                "SCR-HOME",
+                "Home",
                 ["FEAT-LOGIN"])
         ]
     };
@@ -463,16 +678,25 @@ Test("Protected screen changes rejected", () =>
     var changed = generator.Generate(request);
 
     var result = regeneration.TryApply(
-        current, changed,
-        Policy(1, screens: ["SCR-LOGIN"]));
+        current,
+        changed,
+        Policy(
+            1,
+            screens: ["SCR-LOGIN"]
+        )
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "PROTECTED_SCREEN_CHANGED");
+
+    Ensure(
+        result.Reason ==
+        "PROTECTED_SCREEN_CHANGED");
 });
 
 Test("Confirmed requirement cannot be rewritten", () =>
 {
     var newer = generator.Generate(Plan(2));
+
     var original = newer.Requirements[0];
 
     newer.Requirements[0] = new BlueprintRequirement
@@ -487,15 +711,22 @@ Test("Confirmed requirement cannot be rewritten", () =>
     };
 
     var result = regeneration.TryApply(
-        current, newer, Policy());
+        current,
+        newer,
+        Policy()
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "CONFIRMATION_CHANGED");
+
+    Ensure(
+        result.Reason ==
+        "CONFIRMATION_CHANGED");
 });
 
 Test("Broken regenerated navigation rejected", () =>
 {
     var newer = generator.Generate(Plan(2));
+
     var route = newer.Navigation[0];
 
     newer.Navigation[0] = new BlueprintNavigation
@@ -507,10 +738,16 @@ Test("Broken regenerated navigation rejected", () =>
     };
 
     var result = regeneration.TryApply(
-        current, newer, Policy());
+        current,
+        newer,
+        Policy()
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "INVALID_GENERATED_GRAPH");
+
+    Ensure(
+        result.Reason ==
+        "INVALID_GENERATED_GRAPH");
 });
 
 Test("Approved revision remains immutable", () =>
@@ -534,25 +771,106 @@ Test("Approved revision remains immutable", () =>
     var result = regeneration.TryApply(
         approved,
         generator.Generate(Plan(2)),
-        Policy());
+        Policy()
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "IMMUTABLE_REVISION");
+
+    Ensure(
+        result.Reason ==
+        "IMMUTABLE_REVISION");
 });
 
 Test("Wrong Blueprint identity rejected", () =>
 {
     var other = generator.Generate(
-        Plan(2) with { BlueprintId = "BP-OTHER" });
+        Plan(2) with
+        {
+            BlueprintId = "BP-OTHER"
+        }
+    );
 
     var result = regeneration.TryApply(
-        current, other, Policy());
+        current,
+        other,
+        Policy()
+    );
 
     Ensure(!result.Applied);
-    Ensure(result.Reason == "BLUEPRINT_IDENTITY_MISMATCH");
+
+    Ensure(
+        result.Reason ==
+        "BLUEPRINT_IDENTITY_MISMATCH");
 });
 
+// =====================================================
+// BLUEPRINT V1 CONTRACT COMPATIBILITY TESTS
+// =====================================================
+
+Test("Blueprint navigation uses NAV prefix", () =>
+{
+    Ensure(
+        current.Navigation[0].Id.StartsWith(
+            "NAV-",
+            StringComparison.Ordinal)
+    );
+
+    Ensure(
+        current.Actions[0].NavigationId ==
+        current.Navigation[0].Id);
+});
+
+Test("Blueprint component type matches schema", () =>
+{
+    Ensure(
+        current.Components[0].Type == "Button");
+});
+
+Test("Blueprint requirement origin matches schema", () =>
+{
+    Ensure(
+        current.Requirements[0].Origin == "ai");
+});
+
+Test("Serialized Blueprint has expected contract values", () =>
+{
+    string json = JsonSerializer.Serialize(current);
+
+    using var document = JsonDocument.Parse(json);
+
+    var root = document.RootElement;
+
+    Ensure(
+        root.GetProperty("schemaVersion")
+            .GetString() == "1.0.0");
+
+    Ensure(
+        root.GetProperty("components")[0]
+            .GetProperty("type")
+            .GetString() == "Button");
+
+    Ensure(
+        root.GetProperty("navigation")[0]
+            .GetProperty("id")
+            .GetString() == "NAV-LOGIN-HOME");
+
+    Ensure(
+        root.GetProperty("requirements")[0]
+            .GetProperty("origin")
+            .GetString() == "ai");
+
+    Ensure(
+        root.GetProperty("actions")[0]
+            .GetProperty("kind")
+            .GetString() == "navigate");
+});
+
+// =====================================================
+// FINAL TEST RESULT
+// =====================================================
+
 Console.WriteLine();
+
 Console.WriteLine($"PASSED: {passed}");
 Console.WriteLine($"FAILED: {failed}");
 

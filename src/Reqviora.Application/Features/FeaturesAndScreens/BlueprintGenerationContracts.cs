@@ -57,22 +57,26 @@ public interface IDesignComponentRegistry
 }
 
 // Temporary local starter registry, not the final registry service.
+
 public sealed class Day03StarterComponentRegistry
     : IDesignComponentRegistry
 {
     private static readonly Dictionary<string, string[]> Allowed =
         new(StringComparer.Ordinal)
         {
-            ["button"] = ["default", "filled", "outlined", "text"],
-            ["text"] = ["default"],
-            ["text-field"] = ["default", "outlined", "filled"],
-            ["card"] = ["default", "outlined", "elevated"],
-            ["row"] = ["default"],
-            ["column"] = ["default"],
-            ["form"] = ["default"]
+            ["Button"] = ["default", "filled", "outlined", "text"],
+            ["Text"] = ["default"],
+            ["TextInput"] = ["default", "outlined", "filled"],
+            ["Card"] = ["default", "outlined", "elevated"],
+            ["List"] = ["default"],
+            ["Container"] = ["default"],
+            ["Image"] = ["default"],
+            ["Dialog"] = ["default"]
         };
 
     public bool Supports(string type, string variant) =>
+        type is not null &&
+        variant is not null &&
         Allowed.TryGetValue(type, out var variants) &&
         variants.Contains(variant, StringComparer.Ordinal);
 }
@@ -169,7 +173,7 @@ public sealed class BlueprintDraftGenerator(
             request.Actions, x => x.Id, "ACT");
 
         var navigation = Index(
-            request.Navigation, x => x.Id, "ROUTE");
+    request.Navigation, x => x.Id, "NAV");
 
         foreach (var requirement in request.Requirements)
         {
@@ -235,10 +239,9 @@ public sealed class BlueprintDraftGenerator(
             if (!components.ContainsKey(action.ComponentId))
                 throw new ArgumentException(
                     "Action references an unknown component.");
-
             if (action.Kind is not (
-                "navigate" or "back" or
-                "mock_submit" or "show_message"))
+                "navigate" or "submit" or
+                "update" or "openDialog" or "closeDialog"))
             {
                 throw new ArgumentException("Unsupported mock action.");
             }
@@ -293,7 +296,7 @@ public sealed class BlueprintDraftGenerator(
                 {
                     Id = r.Id,
                     Text = r.Title + "\n" + r.Description,
-                    Origin = "user-confirmed",
+                    Origin = "ai",
                     Status = "confirmed",
                     ConfirmedBy = r.ConfirmedBy!.Value.ToString(),
                     ConfirmedAt = r.ConfirmedAt,
