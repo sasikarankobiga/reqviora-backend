@@ -7,6 +7,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_HTTP_PORTS: 8080
       ConnectionStrings__ReqvioraDatabase: Host=postgres;Port=5432;Database=${POSTGRES_DB:-reqviora};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env}
     depends_on:
       postgres:
         condition: service_healthy

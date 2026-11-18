@@ -17,6 +17,17 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1",
         Description = "Backend API for the REQVIORA project workspace."
     });
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Enter the access token returned by the login or refresh endpoint."
+    });
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });
 });
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
@@ -47,6 +58,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCors("Frontend");
+app.UseAuthentication();
+app.UseAuthorization();
 
 if (app.Environment.IsDevelopment())
 {
