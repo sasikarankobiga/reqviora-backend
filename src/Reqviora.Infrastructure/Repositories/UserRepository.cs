@@ -1,18 +1,15 @@
+using Microsoft.EntityFrameworkCore;
 using Reqviora.Application.Features.Authentication.Interfaces;
 using Reqviora.Domain.Entities;
+using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Infrastructure.Repositories;
 
-public sealed class UserRepository : IUserRepository
+public sealed class UserRepository(ReqvioraDbContext dbContext) : IUserRepository
 {
-    private readonly List<User> _users = [];
-
     public Task<User?> GetByEmailAsync(string email, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_users.SingleOrDefault(user => string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase)));
+        dbContext.Users.SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
 
-    public Task AddAsync(User user, CancellationToken cancellationToken = default)
-    {
-        _users.Add(user);
-        return Task.CompletedTask;
-    }
+    public async Task AddAsync(User user, CancellationToken cancellationToken = default) =>
+        await dbContext.Users.AddAsync(user, cancellationToken);
 }
