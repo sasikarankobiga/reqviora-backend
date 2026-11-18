@@ -13,6 +13,7 @@ public sealed class ReqvioraDbContext(DbContextOptions<ReqvioraDbContext> option
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
     public DbSet<Requirement> Requirements => Set<Requirement>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Screen> Screens => Set<Screen>();
     public DbSet<User> Users => Set<User>();
@@ -23,10 +24,23 @@ public sealed class ReqvioraDbContext(DbContextOptions<ReqvioraDbContext> option
 
         modelBuilder.Entity<User>(entity =>
         {
-            entity.HasIndex(user => user.Email).IsUnique();
+            entity.HasIndex(user => user.NormalizedEmail).IsUnique();
             entity.Property(user => user.Email).HasMaxLength(320).IsRequired();
+            entity.Property(user => user.NormalizedEmail).HasMaxLength(320).IsRequired();
             entity.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
             entity.Property(user => user.DisplayName).HasMaxLength(200).IsRequired();
+        });
+
+        modelBuilder.Entity<RefreshToken>(entity =>
+        {
+            entity.HasIndex(token => token.TokenHash).IsUnique();
+            entity.HasIndex(token => new { token.UserId, token.ExpiresAt });
+            entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
+            entity.Property(token => token.ReplacedByTokenHash).HasMaxLength(64);
+            entity.HasOne(token => token.User)
+                .WithMany()
+                .HasForeignKey(token => token.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Role>(entity =>

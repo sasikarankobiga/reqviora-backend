@@ -33,6 +33,7 @@ Keep credentials outside tracked configuration. From the repository root:
 ```bash
 dotnet user-secrets init --project src/Reqviora.Api
 dotnet user-secrets set "ConnectionStrings:ReqvioraDatabase" "Host=localhost;Port=5432;Database=reqviora;Username=postgres;Password=<your-password>" --project src/Reqviora.Api
+dotnet user-secrets set "Jwt:Key" "<a-random-secret-with-at-least-32-characters>" --project src/Reqviora.Api
 dotnet restore
 dotnet tool restore
 dotnet build
@@ -58,7 +59,9 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `Cors:AllowedOrigins` | For browser clients | Explicit frontend origins |
 | `Jwt:Issuer` | Day 2 | Access-token issuer |
 | `Jwt:Audience` | Day 2 | Access-token audience |
-| `Jwt:Key` | Day 2 | Signing key supplied through secrets/environment |
+| `Jwt:Key` | Yes | Signing key supplied through secrets/environment |
+| `Jwt:AccessTokenMinutes` | No | Access-token lifetime; defaults to 15 minutes |
+| `Jwt:RefreshTokenDays` | No | Refresh-token lifetime; defaults to 7 days |
 
 No passwords, connection credentials, or JWT signing keys should be committed.
 
@@ -68,6 +71,7 @@ No passwords, connection credentials, or JWT signing keys should be committed.
 dotnet restore
 dotnet tool restore
 dotnet build
+dotnet test
 ```
 
 ## Database migrations
@@ -81,4 +85,16 @@ dotnet ef database update --project src/Reqviora.Infrastructure --startup-projec
 
 ## Current implementation status
 
-Day 1 provides API hosting, dependency injection, EF Core/PostgreSQL persistence registration, Swagger, CORS, health checks, centralized error responses, and safe configuration. Authentication and project business workflows remain intentionally incomplete for the next assignment days.
+Day 1 provides API hosting, dependency injection, EF Core/PostgreSQL persistence registration, Swagger, CORS, health checks, centralized error responses, and safe configuration.
+
+Day 2 provides password-hashed registration and login, signed JWT access tokens, hashed/rotating refresh-token sessions, logout/revocation, the authenticated `GET /api/users/me` endpoint, and owner-scoped protection on the existing project endpoints. Full Project Get/Update behavior remains part of Day 3.
+
+### Authentication endpoints
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/refresh`
+- `POST /api/auth/logout`
+- `GET /api/users/me` (Bearer token required)
+
+Refresh tokens are returned only when issued or rotated. The database stores their SHA-256 hashes, not the raw token values. Logout is idempotent and revokes an active refresh token.

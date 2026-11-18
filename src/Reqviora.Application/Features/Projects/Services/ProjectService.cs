@@ -6,8 +6,10 @@ namespace Reqviora.Application.Features.Projects.Services;
 
 public sealed class ProjectService(IProjectRepository projects) : IProjectService
 {
-    public async Task<IReadOnlyCollection<ProjectResponseDto>> GetAllAsync(CancellationToken cancellationToken = default) =>
-        (await projects.GetAllAsync(cancellationToken)).Select(ToResponse).ToArray();
+    public async Task<IReadOnlyCollection<ProjectResponseDto>> GetAllAsync(
+        Guid ownerId,
+        CancellationToken cancellationToken = default) =>
+        (await projects.GetAllAsync(ownerId, cancellationToken)).Select(ToResponse).ToArray();
 
     public async Task<ProjectResponseDto> CreateAsync(CreateProjectDto request, Guid ownerId, CancellationToken cancellationToken = default)
     {
