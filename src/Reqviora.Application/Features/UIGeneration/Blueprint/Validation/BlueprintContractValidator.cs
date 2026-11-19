@@ -1,4 +1,5 @@
 
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 
@@ -56,7 +57,7 @@ public static class BlueprintContractValidator
             Add("SCHEMA_VERSION", "$.schemaVersion",
                 "Expected 1.0.0.");
 
-        if (!Matches(document.BlueprintId, "BP"))
+        if (!MatchesId(document.BlueprintId, "BP"))
             Add("INVALID_ID", "$.blueprintId", "Invalid BP- ID.");
 
         if (document.ProjectId == Guid.Empty)
@@ -271,7 +272,8 @@ public static class BlueprintContractValidator
                 Add("UNSUPPORTED_COMPONENT", path,
                     "Component type is not in Blueprint v1.");
 
-            if (component.Props is null)
+            if (component.Props is null || component.Props.Values.Any(
+                value => value.ValueKind == JsonValueKind.Undefined))
                 Add("COMPONENT_PROPS", path,
                     "Component props must be an object.");
 
@@ -296,6 +298,16 @@ public static class BlueprintContractValidator
                 path + ".actionIds",
                 false,
                 issues);
+
+            foreach (var id in component.ActionIds ?? [])
+            {
+                if (id is not null && actions.TryGetValue(id, out var action) &&
+                    action.ComponentId != component.Id)
+                {
+                    Add("COMPONENT_ACTION_MISMATCH", path,
+                        "Listed action belongs to a different component.");
+                }
+            }
 
             CheckRefs(
                 component.ChildComponentIds,
@@ -344,11 +356,16 @@ public static class BlueprintContractValidator
             if (action.Kind == "navigate")
             {
                 if (action.NavigationId is null ||
-                    !navigation.ContainsKey(action.NavigationId))
+                    !navigation.TryGetValue(action.NavigationId, out var route))
                 {
                     Add("BROKEN_REFERENCE",
                         path + ".navigationId",
                         "Navigate action needs a valid NAV- reference.");
+                }
+                else if (route.ActionId != action.Id)
+                {
+                    Add("NAVIGATION_ACTION_MISMATCH", path,
+                        "Referenced route belongs to a different action.");
                 }
             }
             else if (action.NavigationId is not null)
@@ -473,7 +490,7 @@ public static class BlueprintContractValidator
 
             var id = getId(item);
 
-            if (!Matches(id, prefix))
+            if (!MatchesId(id, prefix))
             {
                 issues.Add(new(
                     "INVALID_ID",
@@ -495,14 +512,14 @@ public static class BlueprintContractValidator
         return result;
     }
 
-    private static bool Matches(
+    internal static bool MatchesId(
         string? id,
         string prefix) =>
         id is not null &&
         Regex.IsMatch(
             id,
-            "^" + prefix +
-                "-[A-Z0-9][A-Z0-9._-]*$",
+            @"\A" + prefix +
+                @"-[A-Z0-9][A-Z0-9._-]*\z",
             RegexOptions.CultureInvariant);
 
     private static void CheckRefs<T>(

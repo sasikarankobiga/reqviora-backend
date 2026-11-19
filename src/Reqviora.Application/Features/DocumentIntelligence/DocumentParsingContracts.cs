@@ -33,10 +33,30 @@ public interface IDocumentTextParser
     );
 }
 
+public interface ISourceEvidenceMapper
+{
+    IReadOnlyList<SourceEvidenceRef> Map(DocumentParseResult result);
+}
+
+public sealed class DocumentSourceEvidenceMapper : ISourceEvidenceMapper
+{
+    public IReadOnlyList<SourceEvidenceRef> Map(DocumentParseResult result)
+    {
+        DocumentParsingContractValidator.Validate(result);
+
+        return result.Segments
+            .OrderBy(segment => segment.Sequence)
+            .Select(segment => segment.Evidence)
+            .ToArray();
+    }
+}
+
 public static class DocumentParsingContractValidator
 {
     public static void Validate(DocumentParseResult result)
     {
+        ArgumentNullException.ThrowIfNull(result);
+
         if (result.UploadedFileId == Guid.Empty)
             throw new ArgumentException(
                 "Document upload ID is required.");
