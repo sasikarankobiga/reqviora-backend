@@ -1,5 +1,7 @@
 # REQVIORA Backend
 
+Frontend routes, payloads, concurrency rules, approvals, and export integration are documented in [docs/frontend-api.md](docs/frontend-api.md).
+
 Clean Architecture foundation for the REQVIORA API, targeting .NET 10 and PostgreSQL.
 
 ## Projects
