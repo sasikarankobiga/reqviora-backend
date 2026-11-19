@@ -25,10 +25,15 @@ public sealed class ReqvioraDbContext(
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
 
-    // Rashmina - Requirement Traceability
+    // Rashmina - Requirement Traceability (Task 4)
     public DbSet<RequirementFeature> RequirementFeatures
         => Set<RequirementFeature>();
 
+    // Rashmina - Feature and Screen Relationship (Task 5)
+    public DbSet<FeatureScreen> FeatureScreens
+        => Set<FeatureScreen>();
+    public DbSet<ScreenAction> ScreenActions => Set<ScreenAction>();
+    public DbSet<NavigationEdge> NavigationEdges => Set<NavigationEdge>();
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -158,6 +163,7 @@ public sealed class ReqvioraDbContext(
         {
             entity.HasKey(draft => draft.Id);
 
+            // One current draft per project
             entity.HasIndex(draft => draft.ProjectId)
                 .IsUnique();
 
@@ -185,23 +191,106 @@ public sealed class ReqvioraDbContext(
         {
             entity.HasKey(link => link.Id);
 
-            // Prevent duplicate requirement-feature links
+            // Prevent duplicate Requirement-Feature links
             entity.HasIndex(link => new
             {
                 link.RequirementId,
                 link.FeatureId
             }).IsUnique();
 
-            // Requirement relationship
             entity.HasOne<Requirement>()
                 .WithMany()
                 .HasForeignKey(link => link.RequirementId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Feature relationship
             entity.HasOne<Feature>()
                 .WithMany()
                 .HasForeignKey(link => link.FeatureId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Rashmina - Feature and Screen Relationship (Task 5)
+        modelBuilder.Entity<FeatureScreen>(entity =>
+        {
+            entity.HasKey(link => link.Id);
+
+            // Prevent duplicate Feature-Screen links
+            entity.HasIndex(link => new
+            {
+                link.FeatureId,
+                link.ScreenId
+            }).IsUnique();
+
+            // Feature Foreign Key
+            entity.HasOne<Feature>()
+                .WithMany()
+                .HasForeignKey(link => link.FeatureId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Screen Foreign Key
+            entity.HasOne<Screen>()
+                .WithMany()
+                .HasForeignKey(link => link.ScreenId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Rashmina - Screen Actions (Task 5)
+        modelBuilder.Entity<ScreenAction>(entity =>
+        {
+            entity.HasKey(action => action.Id);
+
+            entity.Property(action => action.Name)
+                .HasMaxLength(150)
+                .IsRequired();
+
+            entity.Property(action => action.ActionType)
+                .HasMaxLength(50)
+                .IsRequired();
+
+            entity.Property(action => action.Description)
+                .HasMaxLength(1000);
+
+            entity.Property(action => action.IsRequired)
+                .IsRequired();
+
+            entity.HasIndex(action => action.ScreenId);
+
+            entity.HasOne<Screen>()
+                .WithMany()
+                .HasForeignKey(action => action.ScreenId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Rashmina - Navigation Edges (Task 5)
+        modelBuilder.Entity<NavigationEdge>(entity =>
+        {
+            entity.HasKey(edge => edge.Id);
+
+            entity.Property(edge => edge.Trigger)
+                .HasMaxLength(150)
+                .IsRequired();
+
+            entity.Property(edge => edge.Condition)
+                .HasMaxLength(1000);
+
+            entity.HasIndex(edge => edge.ProjectId);
+
+            // Starting screen
+            entity.HasOne<Screen>()
+                .WithMany()
+                .HasForeignKey(edge => edge.FromScreenId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Destination screen
+            entity.HasOne<Screen>()
+                .WithMany()
+                .HasForeignKey(edge => edge.ToScreenId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Project relationship
+            entity.HasOne<Project>()
+                .WithMany()
+                .HasForeignKey(edge => edge.ProjectId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
