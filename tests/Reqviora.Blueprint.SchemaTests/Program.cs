@@ -259,6 +259,9 @@ var generator = new BlueprintDraftGenerator(
 
 var generated = generator.Generate(request);
 
+Invalid("Blueprint ID with a trailing newline is rejected",
+    node => node["blueprintId"] = "BP-TRAILING\n");
+
 Test("Generated Blueprint passes full JSON Schema", () =>
 {
     var json = JsonSerializer.SerializeToNode(

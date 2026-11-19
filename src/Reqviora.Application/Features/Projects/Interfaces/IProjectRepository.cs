@@ -5,5 +5,10 @@ namespace Reqviora.Application.Features.Projects.Interfaces;
 public interface IProjectRepository
 {
     Task<IReadOnlyCollection<Project>> GetAllAsync(Guid ownerId, CancellationToken cancellationToken = default);
+    Task<Project?> GetByIdAsync(
+        Guid projectId,
+        Guid ownerId,
+        bool trackChanges = false,
+        CancellationToken cancellationToken = default);
     Task AddAsync(Project project, CancellationToken cancellationToken = default);
 }

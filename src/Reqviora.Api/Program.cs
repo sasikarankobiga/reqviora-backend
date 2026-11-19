@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
+using Reqviora.Api.Features.RequirementReview;
 using Reqviora.Api.Middleware;
 using Reqviora.Application;
 using Reqviora.Infrastructure;
@@ -45,6 +46,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddApplication();
+builder.Services.AddScoped<ReviewApiDecisionBoundary>();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
@@ -70,6 +72,17 @@ if (app.Environment.IsDevelopment())
         options.RoutePrefix = "swagger";
     });
 }
+
+app.MapGet("/", (IHostEnvironment environment) =>
+        environment.IsDevelopment()
+            ? Results.Redirect("/swagger")
+            : Results.Ok(new
+            {
+                name = "REQVIORA API",
+                status = "running",
+                health = "/health/live"
+            }))
+    .ExcludeFromDescription();
 
 app.MapControllers();
 app.MapHealthChecks("/health/live", new HealthCheckOptions

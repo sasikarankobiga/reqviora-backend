@@ -1,3 +1,9 @@
 namespace Reqviora.Application.Features.Projects.DTOs;
 
-public sealed record ProjectResponseDto(Guid Id, string Name, string Description, Guid OwnerId);
+public sealed record ProjectResponseDto(
+    Guid Id,
+    string Name,
+    string Description,
+    Guid OwnerId,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? LastModifiedAt);
