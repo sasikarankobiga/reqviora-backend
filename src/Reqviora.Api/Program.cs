@@ -71,6 +71,17 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.MapGet("/", (IHostEnvironment environment) =>
+        environment.IsDevelopment()
+            ? Results.Redirect("/swagger")
+            : Results.Ok(new
+            {
+                name = "REQVIORA API",
+                status = "running",
+                health = "/health/live"
+            }))
+    .ExcludeFromDescription();
+
 app.MapControllers();
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {

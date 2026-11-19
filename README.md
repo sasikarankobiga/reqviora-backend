@@ -89,6 +89,8 @@ Day 1 provides API hosting, dependency injection, EF Core/PostgreSQL persistence
 
 Day 2 provides password-hashed registration and login, signed JWT access tokens, hashed/rotating refresh-token sessions, logout/revocation, the authenticated `GET /api/users/me` endpoint, and owner-scoped protection on the existing project endpoints. Full Project Get/Update behavior remains part of Day 3.
 
+Day 3 completes authenticated project creation, owner-scoped listing, single-project retrieval, and metadata updates. Project ownership always comes from the validated JWT claim; request bodies cannot assign or change the owner. Requests for another user's project return `404` without revealing whether that project exists.
+
 ### Authentication endpoints
 
 - `POST /api/auth/register`
@@ -98,3 +100,12 @@ Day 2 provides password-hashed registration and login, signed JWT access tokens,
 - `GET /api/users/me` (Bearer token required)
 
 Refresh tokens are returned only when issued or rotated. The database stores their SHA-256 hashes, not the raw token values. Logout is idempotent and revokes an active refresh token.
+
+### Project endpoints
+
+- `POST /api/projects` - create a project for the authenticated user
+- `GET /api/projects` - list only the authenticated user's projects
+- `GET /api/projects/{id}` - read an owned project
+- `PUT /api/projects/{id}` - update an owned project's name and description
+
+All project endpoints require `Authorization: Bearer <access-token>`. A ready-to-run request collection is available at `docs/api/projects.http`.
