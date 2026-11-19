@@ -28,6 +28,9 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ApprovedRevisionId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -53,7 +56,48 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ApprovedRevisionId", "ProjectId");
+
                     b.ToTable("Approvals");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ApprovedRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ApprovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ApprovedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ValidationRunId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApprovedBy");
+
+                    b.HasIndex("DraftVersionId")
+                        .IsUnique();
+
+                    b.HasIndex("DraftVersionId", "ProjectId");
+
+                    b.HasIndex("ValidationRunId", "DraftVersionId");
+
+                    b.ToTable("ApprovedRevisions");
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.Blueprint", b =>
@@ -126,6 +170,202 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.ToTable("Components");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.DesignDraftVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BasedOnRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BlueprintJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectDraftId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("SavedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BasedOnRevisionId", "ProjectId");
+
+                    b.HasIndex("ProjectDraftId", "ProjectId");
+
+                    b.HasIndex("ProjectDraftId", "Version")
+                        .IsUnique();
+
+                    b.ToTable("DesignDraftVersions", t =>
+                        {
+                            t.HasCheckConstraint("CK_DesignDraftVersions_Version", "\"Version\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftFeature", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("DraftVersionId", "Id");
+
+                    b.ToTable("DraftFeatures");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftFeatureRequirement", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FeatureId")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RequirementId")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("DraftVersionId", "FeatureId", "RequirementId");
+
+                    b.HasIndex("DraftVersionId", "RequirementId");
+
+                    b.ToTable("DraftFeatureRequirements");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftRequirement", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("DraftVersionId", "Id");
+
+                    b.ToTable("DraftRequirements");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftScreen", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("DraftVersionId", "Id");
+
+                    b.ToTable("DraftScreens");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftScreenFeature", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ScreenId")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("FeatureId")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("DraftVersionId", "ScreenId", "FeatureId");
+
+                    b.HasIndex("DraftVersionId", "FeatureId");
+
+                    b.ToTable("DraftScreenFeatures");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ExportRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ApprovedRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Archive")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ArchiveSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("GeneratorVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ManifestJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("ApprovedRevisionId", "GeneratorVersion")
+                        .IsUnique();
+
+                    b.ToTable("ExportRecords");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.Feature", b =>
                 {
                     b.Property<Guid>("Id")
@@ -155,6 +395,45 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Features");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.NavigationEdge", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ActionId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("SourceScreenId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("TargetScreenId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("DraftVersionId", "Id");
+
+                    b.HasIndex("DraftVersionId", "SourceScreenId");
+
+                    b.HasIndex("DraftVersionId", "TargetScreenId");
+
+                    b.HasIndex("DraftVersionId", "ActionId", "SourceScreenId");
+
+                    b.ToTable("NavigationEdges");
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.NavigationRoute", b =>
@@ -219,9 +498,14 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("WorkspaceId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("WorkspaceId");
 
                     b.ToTable("Projects");
                 });
@@ -260,6 +544,95 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ProjectDocuments");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ApprovedRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("BasedOnRevisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DraftJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LastModifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId")
+                        .IsUnique();
+
+                    b.HasIndex("ApprovedRevisionId", "ProjectId");
+
+                    b.HasIndex("BasedOnRevisionId", "ProjectId");
+
+                    b.ToTable("ProjectDrafts", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectDrafts_Version", "\"Version\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("JoinedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ProjectId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ProjectMembers", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectMembers_Role", "TRIM(\"Role\") <> ''");
+                        });
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.RefreshToken", b =>
@@ -334,6 +707,35 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.ToTable("Requirements");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.RequirementSourceEvidence", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequirementId")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Locator")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Quote")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("DraftVersionId", "RequirementId", "Ordinal");
+
+                    b.ToTable("RequirementSourceEvidence");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -396,6 +798,39 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.ToTable("Screens");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.ScreenAction", b =>
+                {
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ComponentId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ScreenId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(128)");
+
+                    b.HasKey("DraftVersionId", "Id");
+
+                    b.HasIndex("DraftVersionId", "ScreenId");
+
+                    b.ToTable("ScreenActions");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -445,6 +880,296 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.ValidationFinding", b =>
+                {
+                    b.Property<Guid>("ValidationRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("ValidationRunId", "Ordinal");
+
+                    b.ToTable("ValidationFindings");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ValidationRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DraftVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Passed")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("ValidatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DraftVersionId");
+
+                    b.ToTable("ValidationRuns");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.Workspace", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LastModifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId");
+
+                    b.ToTable("Workspaces");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.Approval", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedRevisionId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ApprovedRevision", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.ValidationRun", null)
+                        .WithMany()
+                        .HasForeignKey("ValidationRunId", "DraftVersionId")
+                        .HasPrincipalKey("Id", "DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DesignDraftVersion", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
+                        .WithMany()
+                        .HasForeignKey("BasedOnRevisionId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.ProjectDraft", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectDraftId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftFeature", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftFeatureRequirement", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftFeature", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "FeatureId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "RequirementId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftRequirement", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftScreen", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.DraftScreenFeature", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftFeature", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "FeatureId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftScreen", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "ScreenId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ExportRecord", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedRevisionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.NavigationEdge", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftScreen", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "SourceScreenId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftScreen", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "TargetScreenId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.ScreenAction", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "ActionId", "SourceScreenId")
+                        .HasPrincipalKey("DraftVersionId", "Id", "ScreenId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.Project", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("WorkspaceId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectDraft", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedRevisionId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
+                        .WithMany()
+                        .HasForeignKey("BasedOnRevisionId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectMember", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("Reqviora.Domain.Entities.User", "User")
@@ -454,6 +1179,68 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.RequirementSourceEvidence", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "RequirementId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ScreenAction", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.DraftScreen", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId", "ScreenId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ValidationFinding", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.ValidationRun", null)
+                        .WithMany("Findings")
+                        .HasForeignKey("ValidationRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ValidationRun", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.DesignDraftVersion", null)
+                        .WithMany()
+                        .HasForeignKey("DraftVersionId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.Workspace", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ValidationRun", b =>
+                {
+                    b.Navigation("Findings");
                 });
 #pragma warning restore 612, 618
         }
