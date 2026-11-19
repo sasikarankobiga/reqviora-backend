@@ -22,6 +22,23 @@ public sealed class RequirementReviewsTests : IDisposable
     private readonly ReviewApiFactory _factory = new();
 
     [Theory]
+    [InlineData("POST")]
+    [InlineData("PUT")]
+    public async Task Project_write_validates_request_body_before_review(string method)
+    {
+        using var client = CreateClient(_factory.Owner);
+        var path = method == "POST" ? "/api/projects" : $"/api/projects/{_factory.ProjectId}";
+        using var request = new HttpRequestMessage(new HttpMethod(method), path)
+        {
+            Content = JsonContent.Create(new { name = "", description = "Invalid project name" })
+        };
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("invalid-access-token")]
     public async Task Submit_requires_a_verified_access_token(string? accessToken)
