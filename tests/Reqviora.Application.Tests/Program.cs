@@ -226,6 +226,29 @@ Reject("Failure without error code rejected", () =>
 Test("Valid source evidence", () =>
     DocumentParsingContractValidator.Validate(parsedDocument));
 
+Test("Document evidence mapper preserves provenance in source order", () =>
+{
+    var second = evidence with
+    {
+        Locator = "page 2 paragraph 1",
+        PageNumber = 2,
+        StartOffset = 20,
+        EndOffset = 35
+    };
+    ISourceEvidenceMapper mapper = new DocumentSourceEvidenceMapper();
+    var sources = mapper.Map(parsedDocument with
+    {
+        Segments =
+        [
+            new(1, "User must login", second),
+            parsedDocument.Segments[0]
+        ]
+    });
+
+    if (!sources.SequenceEqual([evidence, second]))
+        throw new Exception("Expected source IDs, locations, offsets and quotes to be preserved.");
+});
+
 Reject("Duplicate segment sequence rejected", () =>
     DocumentParsingContractValidator.Validate(
         parsedDocument with

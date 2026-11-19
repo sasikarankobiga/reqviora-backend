@@ -132,3 +132,17 @@ In development, apply the EF migrations above and the review schema in
 using the route. The review script expects the `anon` and `authenticated`
 roles provided by Supabase. For a standalone development PostgreSQL instance,
 create those roles as `NOLOGIN` roles before running the script.
+
+## Kobiga backend assignment
+
+| Tasks | Implementation and verification |
+| --- | --- |
+| 1–3 | Blueprint v1 validation covers all six ID types, duplicate IDs, and broken references. [Schema](contracts/schemas/blueprint/blueprint.v1.schema.json) · [Semantic validator](src/Reqviora.Application/Features/UIGeneration/Blueprint/Validation/BlueprintContractValidator.cs) · [Schema tests](tests/Reqviora.Blueprint.SchemaTests/Program.cs) · [Graph tests](tests/Reqviora.Blueprint.ContractTests/Program.cs) |
+| 4–7 | Input Studio covers text, documents, voice, and manual input. The input pipeline suite covers provider contracts, document parsing, source evidence mapping, and editable Tamil and English transcripts. [AI provider contract](src/Reqviora.Application/Features/AIOrchestration/ProviderContracts.cs) |
+| 8–9 | Structured extraction limits candidates to known source evidence. Human review supports accept, edit, reject, defer, and clarification. The review API records decisions with revision checks and audit history. |
+| 10–11 | The draft generator builds feature and screen graphs from confirmed requirements using the component registry. Regeneration validates provider output against Blueprint v1 and the graph validator, preserves confirmations and protected edits, and returns the current draft on invalid output or provider failure. |
+
+The provider, document parser, and transcriber are application interfaces. Tests
+supply fixture output while the G0-07 provider decision is pending. Blueprint
+schema, semantic validation, input pipeline, generation, and review checks run
+through the .NET 10 build and contract suites.

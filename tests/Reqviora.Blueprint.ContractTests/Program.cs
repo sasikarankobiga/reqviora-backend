@@ -530,6 +530,39 @@ Bad(
 // ACTION AND NAVIGATION TESTS
 
 Bad(
+    "Duplicate action ID",
+    "DUPLICATE_ID",
+    d => d["actions"]!.AsArray().Add(d["actions"]![0]!.DeepClone()));
+
+Bad(
+    "Second component cannot claim another component's action",
+    "COMPONENT_ACTION_MISMATCH",
+    d =>
+    {
+        var duplicate = d["components"]![0]!.DeepClone();
+        duplicate["id"] = "CMP-UNRELATED";
+        var screenId = duplicate["screenId"]!.GetValue<string>();
+        var screen = d["screens"]!.AsArray()
+            .Single(x => x!["id"]!.GetValue<string>() == screenId)!;
+        screen["componentIds"]!.AsArray().Add("CMP-UNRELATED");
+        d["components"]!.AsArray().Add(duplicate);
+    });
+
+Bad(
+    "Two actions cannot claim the same route",
+    "NAVIGATION_ACTION_MISMATCH",
+    d =>
+    {
+        var duplicate = d["actions"]![0]!.DeepClone();
+        duplicate["id"] = "ACT-UNRELATED";
+        var componentId = duplicate["componentId"]!.GetValue<string>();
+        var component = d["components"]!.AsArray()
+            .Single(x => x!["id"]!.GetValue<string>() == componentId)!;
+        component["actionIds"]!.AsArray().Add("ACT-UNRELATED");
+        d["actions"]!.AsArray().Add(duplicate);
+    });
+
+Bad(
     "Action references unknown component",
     "BROKEN_REFERENCE",
     d => d["actions"]![0]!["componentId"] =
