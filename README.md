@@ -83,6 +83,8 @@ dotnet tool restore
 dotnet ef database update --project src/Reqviora.Infrastructure --startup-project src/Reqviora.Api
 ```
 
+[Draft and approval persistence ERD, SQL Server setup, and integration tests](docs/database/rashmina-persistence.md)
+
 ## Current implementation status
 
 Day 1 provides API hosting, dependency injection, EF Core/PostgreSQL persistence registration, Swagger, CORS, health checks, centralized error responses, and safe configuration.

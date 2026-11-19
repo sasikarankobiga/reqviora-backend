@@ -5,7 +5,7 @@ using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 
 namespace Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 
-internal static class BlueprintJsonContract
+public static class BlueprintJsonContract
 {
     private static readonly JsonSchema Schema = LoadSchema();
 
