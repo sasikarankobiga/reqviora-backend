@@ -100,6 +100,9 @@ public static class DependencyInjection
             // Rashmina - Project Draft Save / Resume
             .AddScoped<ProjectDraftService>()
 
+            // Rashmina - Requirement Traceability
+            .AddScoped<RequirementFeatureService>()
+
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IFileStorageService, FileStorageService>()
