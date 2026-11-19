@@ -8,6 +8,12 @@ using Reqviora.Application.Features.RequirementReview;
 
 namespace Reqviora.Api.Features.RequirementReview;
 
+internal sealed class ReviewApiValidationException(string message, Exception? innerException = null)
+    : ArgumentException(message, innerException);
+
+internal sealed class ReviewApiAuthenticationException(string message)
+    : UnauthorizedAccessException(message);
+
 // ===========================================
 // 1. INPUT CONTRACT
 // ===========================================
@@ -49,12 +55,13 @@ public sealed record ReviewApiDecisionReceipt(
 
 public static class ReviewApiDecisionJson
 {
-    private const int MaxBodyBytes = 16_384;
+    internal const int MaxBodyBytes = 16_384;
 
     private static readonly JsonSerializerOptions Options =
         new(JsonSerializerDefaults.Web)
         {
             PropertyNameCaseInsensitive = false,
+            NumberHandling = JsonNumberHandling.Strict,
             UnmappedMemberHandling =
                 JsonUnmappedMemberHandling.Disallow,
             AllowDuplicateProperties = false
@@ -65,14 +72,14 @@ public static class ReviewApiDecisionJson
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Review request body is required.");
         }
 
         if (Encoding.UTF8.GetByteCount(json) >
             MaxBodyBytes)
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Review request body is too large.");
         }
 
@@ -81,12 +88,12 @@ public static class ReviewApiDecisionJson
             return JsonSerializer.Deserialize
                 <ReviewApiDecisionBody>(
                     json, Options)
-                ?? throw new ArgumentException(
+                ?? throw new ReviewApiValidationException(
                     "Review request must be an object.");
         }
         catch (JsonException ex)
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Invalid review JSON contract.", ex);
         }
     }
@@ -100,7 +107,7 @@ public static class ReviewApiDecisionMapper
 {
     private static readonly Regex RequirementIdPattern =
         new(
-            @"^REQ-[A-Z0-9][A-Z0-9._-]*$",
+            @"\AREQ-[A-Z0-9][A-Z0-9._-]*\z",
             RegexOptions.CultureInvariant);
 
     public static SubmitRequirementReview ToCommand(
@@ -110,13 +117,13 @@ public static class ReviewApiDecisionMapper
     {
         if (body is null)
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Review request is required.");
         }
 
         if (projectId == Guid.Empty)
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Valid project ID is required.");
         }
 
@@ -124,13 +131,13 @@ public static class ReviewApiDecisionMapper
             requirementId.Length > 100 ||
             !RequirementIdPattern.IsMatch(requirementId))
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Invalid requirement ID.");
         }
 
         if (body.ExpectedRevision < 1)
         {
-            throw new ArgumentException(
+            throw new ReviewApiValidationException(
                 "Expected revision must be positive.");
         }
 
@@ -143,7 +150,7 @@ public static class ReviewApiDecisionMapper
                 "edit" => RequirementDecisionKind.Edit,
                 "reject" => RequirementDecisionKind.Reject,
                 "defer" => RequirementDecisionKind.Defer,
-                _ => throw new ArgumentException(
+                _ => throw new ReviewApiValidationException(
                     "Unsupported review decision.")
             };
 
@@ -155,7 +162,7 @@ public static class ReviewApiDecisionMapper
                 body.EditedDescription is null ||
                 body.EditedDescription.Length > 4000)
             {
-                throw new ArgumentException(
+                throw new ReviewApiValidationException(
                     "Edit requires a valid title and description.");
             }
         }
@@ -166,7 +173,7 @@ public static class ReviewApiDecisionMapper
             if (body.EditedTitle is not null ||
                 body.EditedDescription is not null)
             {
-                throw new ArgumentException(
+                throw new ReviewApiValidationException(
                     "Edit fields are only valid for edit decisions.");
             }
         }
@@ -207,7 +214,7 @@ public static class ReviewApiPrincipalReader
         // Fail closed for missing or ambiguous identities.
         if (authenticatedIdentities.Length != 1)
         {
-            throw new UnauthorizedAccessException(
+            throw new ReviewApiAuthenticationException(
                 "A verified user identity is required.");
         }
 
@@ -221,7 +228,7 @@ public static class ReviewApiPrincipalReader
 
         if (subjectClaims.Length == 0)
         {
-            throw new UnauthorizedAccessException(
+            throw new ReviewApiAuthenticationException(
                 "User ID claim is missing.");
         }
 
@@ -233,14 +240,14 @@ public static class ReviewApiPrincipalReader
                     claim.Value, out var parsed) ||
                 parsed == Guid.Empty)
             {
-                throw new UnauthorizedAccessException(
+                throw new ReviewApiAuthenticationException(
                     "Invalid user identity.");
             }
 
             if (userId.HasValue &&
                 userId.Value != parsed)
             {
-                throw new UnauthorizedAccessException(
+                throw new ReviewApiAuthenticationException(
                     "Conflicting identity claims.");
             }
 

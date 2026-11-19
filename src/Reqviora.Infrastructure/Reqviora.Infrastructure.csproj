@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Reqviora.Application\Reqviora.Application.csproj" />
     <ProjectReference Include="..\Reqviora.Domain\Reqviora.Domain.csproj" />
+    <ProjectReference Include="..\Reqviora.Review.Persistence\Reqviora.Review.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>

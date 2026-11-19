@@ -109,3 +109,26 @@ Refresh tokens are returned only when issued or rotated. The database stores the
 - `PUT /api/projects/{id}` - update an owned project's name and description
 
 All project endpoints require `Authorization: Bearer <access-token>`. A ready-to-run request collection is available at `docs/api/projects.http`.
+
+### Requirement review
+
+`POST /api/projects/{projectId}/requirements/{requirementId}/review` accepts a
+Bearer token from the project owner. Send the decision and its expected
+revision in an `application/json` request body.
+
+```json
+{"expectedRevision": 1, "decision": "accept"}
+```
+
+Supported decisions are `accept`, `edit`, `reject`, and `defer`. An `edit`
+requires `editedTitle` and `editedDescription` and returns the requirement to
+`suggested` until it is explicitly accepted. The API records the reviewer from
+the authenticated token and returns the requirement ID, status, and new
+revision. A stale revision or invalid status transition returns HTTP 409.
+
+The review endpoint uses the existing `ConnectionStrings:ReqvioraDatabase`.
+In development, apply the EF migrations above and the review schema in
+`database/reqviora_review/001_create_review_store.sql` to that database before
+using the route. The review script expects the `anon` and `authenticated`
+roles provided by Supabase. For a standalone development PostgreSQL instance,
+create those roles as `NOLOGIN` roles before running the script.
