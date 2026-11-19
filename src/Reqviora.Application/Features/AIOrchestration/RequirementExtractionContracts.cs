@@ -1,8 +1,9 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using Reqviora.Application.Features.DocumentIntelligence;
+using Reqviora.Application.Features.Documents;
+using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 
 namespace Reqviora.Application.Features.AIOrchestration;
 
@@ -28,16 +29,13 @@ public sealed record RequirementExtractionPayload(
 
 public static class RequirementExtractionValidator
 {
-    private static readonly Regex RequirementIdPattern = new(
-        @"^REQ-[A-Z0-9]+(-[A-Z0-9]+)*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant
-    );
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        PropertyNameCaseInsensitive = false
+        PropertyNameCaseInsensitive = false,
+        RespectRequiredConstructorParameters = true,
+        MaxDepth = 32
     };
 
     public static RequirementExtractionPayload Parse(
@@ -64,22 +62,13 @@ public static class RequirementExtractionValidator
             throw new ArgumentException(
                 "Allowed source evidence is required.");
 
-        if (response.StructuredJson!.Length > 2_000_000)
-            throw new ArgumentException("AI response is too large.");
-
-        using var document = JsonDocument.Parse(
-            response.StructuredJson,
-            new JsonDocumentOptions { MaxDepth = 32 });
-
-        RejectDuplicateJsonKeys(document.RootElement);
-
         RequirementExtractionPayload payload;
 
         try
         {
             payload = JsonSerializer.Deserialize
                 <RequirementExtractionPayload>(
-                    response.StructuredJson,
+                    response.StructuredJson!,
                     JsonOptions)
                 ?? throw new ArgumentException(
                     "Empty extraction payload.");
@@ -98,6 +87,10 @@ public static class RequirementExtractionValidator
                 "Unsupported contract version or candidate count.");
         }
 
+        var sourceCitations = allowedEvidence
+            .Select(source => new CandidateEvidence(source.SourceId, source.Locator, source.Quote))
+            .ToHashSet();
+
         var candidateIds = new HashSet<string>(
             StringComparer.Ordinal);
 
@@ -106,7 +99,7 @@ public static class RequirementExtractionValidator
             if (candidate is null ||
                 string.IsNullOrWhiteSpace(candidate.Id) ||
                 candidate.Id.Length > 100 ||
-                !RequirementIdPattern.IsMatch(candidate.Id))
+                !BlueprintContractValidator.MatchesId(candidate.Id, "REQ"))
             {
                 throw new ArgumentException(
                     "Invalid candidate requirement ID.");
@@ -125,8 +118,7 @@ public static class RequirementExtractionValidator
                     "Invalid candidate title or description.");
             }
 
-            if (candidate.LanguageCode is not (
-                "en" or "en-LK" or "ta" or "ta-LK"))
+            if (!InputStudioContractValidator.IsSupportedLanguage(candidate.LanguageCode))
             {
                 throw new ArgumentException(
                     "Unsupported candidate language.");
@@ -146,8 +138,7 @@ public static class RequirementExtractionValidator
                     "Candidate needs 1 to 10 source evidence references.");
             }
 
-            var seenEvidence = new HashSet<string>(
-                StringComparer.Ordinal);
+            var seenEvidence = new HashSet<CandidateEvidence>();
 
             foreach (var evidence in candidate.Evidence)
             {
@@ -160,50 +151,16 @@ public static class RequirementExtractionValidator
                         "Invalid source evidence.");
                 }
 
-                var evidenceKey =
-                    evidence.SourceId + "\u001f" +
-                    evidence.Locator + "\u001f" +
-                    evidence.Quote;
-
-                if (!seenEvidence.Add(evidenceKey))
+                if (!seenEvidence.Add(evidence))
                     throw new ArgumentException(
                         "Duplicate source evidence.");
 
-                bool found = allowedEvidence.Any(source =>
-                    source.SourceId == evidence.SourceId &&
-                    source.Locator == evidence.Locator &&
-                    source.Quote == evidence.Quote);
-
-                if (!found)
+                if (!sourceCitations.Contains(evidence))
                     throw new ArgumentException(
                         "AI cited an unknown source evidence reference.");
             }
         }
 
         return payload;
-    }
-
-    private static void RejectDuplicateJsonKeys(
-        JsonElement element)
-    {
-        if (element.ValueKind == JsonValueKind.Object)
-        {
-            var names = new HashSet<string>(
-                StringComparer.Ordinal);
-
-            foreach (var property in element.EnumerateObject())
-            {
-                if (!names.Add(property.Name))
-                    throw new ArgumentException(
-                        "Duplicate JSON property in AI output.");
-
-                RejectDuplicateJsonKeys(property.Value);
-            }
-        }
-        else if (element.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in element.EnumerateArray())
-                RejectDuplicateJsonKeys(item);
-        }
     }
 }

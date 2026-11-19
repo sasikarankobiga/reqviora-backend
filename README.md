@@ -109,3 +109,40 @@ Refresh tokens are returned only when issued or rotated. The database stores the
 - `PUT /api/projects/{id}` - update an owned project's name and description
 
 All project endpoints require `Authorization: Bearer <access-token>`. A ready-to-run request collection is available at `docs/api/projects.http`.
+
+### Requirement review
+
+`POST /api/projects/{projectId}/requirements/{requirementId}/review` accepts a
+Bearer token from the project owner. Send the decision and its expected
+revision in an `application/json` request body.
+
+```json
+{"expectedRevision": 1, "decision": "accept"}
+```
+
+Supported decisions are `accept`, `edit`, `reject`, and `defer`. An `edit`
+requires `editedTitle` and `editedDescription` and returns the requirement to
+`suggested` until it is explicitly accepted. The API records the reviewer from
+the authenticated token and returns the requirement ID, status, and new
+revision. A stale revision or invalid status transition returns HTTP 409.
+
+The review endpoint uses the existing `ConnectionStrings:ReqvioraDatabase`.
+In development, apply the EF migrations above and the review schema in
+`database/reqviora_review/001_create_review_store.sql` to that database before
+using the route. The review script expects the `anon` and `authenticated`
+roles provided by Supabase. For a standalone development PostgreSQL instance,
+create those roles as `NOLOGIN` roles before running the script.
+
+## Kobiga backend assignment
+
+| Tasks | Implementation and verification |
+| --- | --- |
+| 1–3 | Blueprint v1 validation covers all six ID types, duplicate IDs, and broken references. [Schema](contracts/schemas/blueprint/blueprint.v1.schema.json) · [Semantic validator](src/Reqviora.Application/Features/UIGeneration/Blueprint/Validation/BlueprintContractValidator.cs) · [Schema tests](tests/Reqviora.Blueprint.SchemaTests/Program.cs) · [Graph tests](tests/Reqviora.Blueprint.ContractTests/Program.cs) |
+| 4–7 | Input Studio covers text, documents, voice, and manual input. The input pipeline suite covers provider contracts, document parsing, source evidence mapping, and editable Tamil and English transcripts. [AI provider contract](src/Reqviora.Application/Features/AIOrchestration/ProviderContracts.cs) |
+| 8–9 | Structured extraction limits candidates to known source evidence. Human review supports accept, edit, reject, defer, and clarification. The review API records decisions with revision checks and audit history. |
+| 10–11 | The draft generator builds feature and screen graphs from confirmed requirements using the component registry. Regeneration validates provider output against Blueprint v1 and the graph validator, preserves confirmations and protected edits, and returns the current draft on invalid output or provider failure. |
+
+The provider, document parser, and transcriber are application interfaces. Tests
+supply fixture output while the G0-07 provider decision is pending. Blueprint
+schema, semantic validation, input pipeline, generation, and review checks run
+through the .NET 10 build and contract suites.
