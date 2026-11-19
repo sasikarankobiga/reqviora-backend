@@ -5,12 +5,11 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="../../src/Reqviora.Application/Reqviora.Application.csproj" />
-		<PackageReference Include="JsonSchema.Net" Version="9.7.0" />
+		<PackageReference Include="JsonSchema.Net" />
 	</ItemGroup>
 
 </Project>

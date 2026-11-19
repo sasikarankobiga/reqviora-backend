@@ -1,3 +1,4 @@
+
 using System.ComponentModel.DataAnnotations;
 
 namespace Reqviora.Application.Features.Authentication.DTOs;

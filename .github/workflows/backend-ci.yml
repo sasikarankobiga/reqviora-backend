@@ -2,17 +2,51 @@ name: Backend CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, Kobiga, Rashmina]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: reqviora_ci_postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_PID: Developer
+          MSSQL_SA_PASSWORD: ReqvioraCi_SQL_2026!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'ReqvioraCi_SQL_2026!' -C -Q 'SELECT 1'"
+          --health-start-period 30s
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
-      - run: dotnet restore Reqviora.sln
-      - run: dotnet build Reqviora.sln --configuration Release --no-restore
+          global-json-file: global.json
+      - run: dotnet test Reqviora.sln --configuration Release
+        env:
+          REQVIORA_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=reqviora_ci_postgres
+          REQVIORA_TEST_SQLSERVER: Server=127.0.0.1,1433;Database=master;User ID=sa;Password=ReqvioraCi_SQL_2026!;TrustServerCertificate=True
+      - name: Run contract suites
+        shell: bash
+        run: |
+          for suite in InputPipeline.ContractTests Blueprint.SchemaTests Blueprint.ContractTests Day03.ContractTests RequirementReview.Tests Review.ApiContracts.Tests; do
+            dotnet run --configuration Release --project "tests/Reqviora.$suite"
+          done

@@ -1,5 +1,7 @@
 
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.DocumentIntelligence;
 using Reqviora.Application.Features.RequirementReview;
@@ -118,6 +120,12 @@ RequirementExtractionPayload Extract(
         Response(SerializePayload(payload)),
         [source]
     );
+
+var screenRequest = aiRequest with { Operation = AiOperation.ScreenSuggestion };
+var blueprintJsonOptions = new JsonSerializerOptions
+{
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+};
 
 var suggested =
     RequirementReviewService.CreateCandidate(candidate);
@@ -309,6 +317,19 @@ Reject("Out of range confidence rejected", () =>
 Reject("Unsupported extraction contract rejected", () =>
 {
     Extract(new("2.0", [candidate]));
+});
+
+Reject("AI candidate missing required confidence is rejected", () =>
+{
+    var json = JsonNode.Parse(SerializePayload(extractionPayload))!.AsObject();
+    json["candidates"]![0]!.AsObject().Remove("confidence");
+    RequirementExtractionValidator.Parse(aiRequest, Response(json.ToJsonString()), [source]);
+});
+
+Reject("Duplicate JSON field in structured extraction is rejected", () =>
+{
+    var json = SerializePayload(extractionPayload).Insert(1, "\"contractVersion\":\"1.0\",");
+    RequirementExtractionValidator.Parse(aiRequest, Response(json), [source]);
 });
 
 Reject("Wrong AI request ID rejected", () =>
@@ -748,6 +769,116 @@ Test("Broken regenerated navigation rejected", () =>
     Ensure(
         result.Reason ==
         "INVALID_GENERATED_GRAPH");
+});
+
+Test("Duplicate confirmed IDs fall back without altering the current draft", () =>
+{
+    var newer = generator.Generate(Plan(2));
+    newer.Requirements.Add(newer.Requirements[0]);
+
+    var result = regeneration.TryApply(current, newer, Policy());
+
+    Ensure(!result.Applied && result.Reason == "INVALID_GENERATED_GRAPH");
+    Ensure(ReferenceEquals(result.Blueprint, current));
+});
+
+Test("Changing a protected component's navigation falls back", () =>
+{
+    var plan = Plan(2);
+    var redirect = plan.Navigation[0] with { TargetScreenId = "SCR-LOGIN" };
+    var newer = generator.Generate(plan with { Navigation = [redirect] });
+
+    var result = regeneration.TryApply(current, newer, Policy(components: ["CMP-LOGIN-BTN"]));
+
+    Ensure(!result.Applied && result.Reason == "PROTECTED_COMPONENT_CHANGED");
+    Ensure(ReferenceEquals(result.Blueprint, current));
+});
+
+Test("Provider Blueprint preserves the source-to-screen trace", () =>
+{
+    var newer = generator.Generate(Plan(2));
+    var result = regeneration.TryApplyAiOutput(
+        current, Policy(), screenRequest, Response(JsonSerializer.Serialize(newer, blueprintJsonOptions)));
+
+    Ensure(result.Applied);
+    var blueprint = result.Blueprint;
+    var component = blueprint.Components.Single();
+    var screen = blueprint.Screens.Single(item => item.Id == component.ScreenId);
+    var feature = blueprint.Features.Single(item => item.Id == screen.FeatureIds.Single());
+    var requirement = blueprint.Requirements.Single(item => item.Id == feature.RequirementIds.Single());
+
+    Ensure(requirement.ConfirmedBy == reviewerId.ToString());
+    Ensure(requirement.Evidence.Single().Quote == source.Quote);
+    Ensure(requirement.Evidence.Single().Locator == source.Locator);
+    Ensure(current.Revision == 1 && blueprint.Revision == 2);
+});
+
+Test("Provider Blueprint cannot omit a required collection", () =>
+{
+    var proposal = JsonSerializer.SerializeToNode(generator.Generate(Plan(2)), blueprintJsonOptions)!.AsObject();
+    proposal.Remove("navigation");
+    var result = regeneration.TryApplyAiOutput(current, Policy(), screenRequest, Response(proposal.ToJsonString()));
+
+    Ensure(!result.Applied && result.Reason == "INVALID_AI_OUTPUT");
+    Ensure(ReferenceEquals(result.Blueprint, current));
+});
+
+Test("Schema-valid empty design does not replace the current design", () =>
+{
+    var proposal = JsonSerializer.SerializeToNode(generator.Generate(Plan(2)), blueprintJsonOptions)!.AsObject();
+    foreach (var section in new[] { "features", "screens", "components", "actions", "navigation" })
+        proposal[section] = new JsonArray();
+
+    var result = regeneration.TryApplyAiOutput(current, Policy(), screenRequest, Response(proposal.ToJsonString()));
+
+    Ensure(!result.Applied && result.Reason == "INVALID_GENERATED_GRAPH");
+    Ensure(ReferenceEquals(result.Blueprint, current));
+});
+
+Test("Schema-valid provider output cannot add a human confirmation", () =>
+{
+    var proposal = JsonSerializer.SerializeToNode(generator.Generate(Plan(2)), blueprintJsonOptions)!.AsObject();
+    var requirements = proposal["requirements"]!.AsArray();
+    var invented = requirements[0]!.DeepClone();
+    invented["id"] = "REQ-NEW";
+    requirements.Add(invented);
+
+    var result = regeneration.TryApplyAiOutput(current, Policy(), screenRequest, Response(proposal.ToJsonString()));
+
+    Ensure(!result.Applied && result.Reason == "CONFIRMATION_CHANGED");
+    Ensure(ReferenceEquals(result.Blueprint, current));
+});
+
+Test("Provider Blueprint with duplicate keys falls back", () =>
+{
+    var proposal = JsonSerializer.Serialize(generator.Generate(Plan(2)), blueprintJsonOptions)
+        .Insert(1, "\"revision\":2,");
+    var result = regeneration.TryApplyAiOutput(current, Policy(), screenRequest, Response(proposal));
+
+    Ensure(!result.Applied && result.Reason == "INVALID_AI_OUTPUT");
+    Ensure(ReferenceEquals(result.Blueprint, current));
+});
+
+Test("Provider failure and unavailability return the prior draft", () =>
+{
+    foreach (var status in new[] { AiRunStatus.Failed, AiRunStatus.Unavailable })
+    {
+        var response = new AiProviderResponse(requestId, status, null, "PROVIDER_ERROR");
+        var result = regeneration.TryApplyAiOutput(current, Policy(), screenRequest, response);
+
+        Ensure(!result.Applied && ReferenceEquals(result.Blueprint, current));
+        Ensure(result.Reason == (status == AiRunStatus.Failed ? "AI_FAILED" : "AI_UNAVAILABLE"));
+    }
+});
+
+Test("Provider response must match the screen suggestion request", () =>
+{
+    var proposed = JsonSerializer.Serialize(generator.Generate(Plan(2)), blueprintJsonOptions);
+    var response = Response(proposed) with { RequestId = Guid.NewGuid() };
+    var result = regeneration.TryApplyAiOutput(current, Policy(), screenRequest, response);
+
+    Ensure(!result.Applied && result.Reason == "AI_RESPONSE_MISMATCH");
+    Ensure(ReferenceEquals(result.Blueprint, current));
 });
 
 Test("Approved revision remains immutable", () =>

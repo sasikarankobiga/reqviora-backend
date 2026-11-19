@@ -1,8 +1,8 @@
 
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
+using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 
 namespace Reqviora.Application.Features.FeaturesAndScreens;
 
@@ -89,9 +89,6 @@ public interface IBlueprintDraftGenerator
 public sealed class BlueprintDraftGenerator(
     IDesignComponentRegistry registry) : IBlueprintDraftGenerator
 {
-    private static readonly Regex BlueprintIdPattern = new(
-        @"^BP-[A-Z0-9]+(-[A-Z0-9]+)*$");
-
     public BlueprintDocument Generate(
         BlueprintGenerationRequest request)
     {
@@ -100,7 +97,7 @@ public sealed class BlueprintDraftGenerator(
         if (request.ProjectId == Guid.Empty ||
             request.Revision < 1 ||
             string.IsNullOrWhiteSpace(request.BlueprintId) ||
-            !BlueprintIdPattern.IsMatch(request.BlueprintId))
+            !BlueprintContractValidator.MatchesId(request.BlueprintId, "BP"))
         {
             throw new ArgumentException(
                 "Invalid Blueprint identity or revision.");
@@ -125,164 +122,39 @@ public sealed class BlueprintDraftGenerator(
                 "Confirmed requirements, features and screens are required.");
         }
 
-        static Dictionary<string, T> Index<T>(
-            IEnumerable<T> items,
-            Func<T, string> selector,
-            string prefix)
+        if (request.Requirements.Any(requirement =>
+            requirement is null ||
+            requirement.Status != RequirementReviewStatus.Confirmed ||
+            requirement.ConfirmedBy is null ||
+            requirement.ConfirmedBy == Guid.Empty ||
+            requirement.ConfirmedAt is null ||
+            requirement.ConfirmedAt == default(DateTimeOffset) ||
+            string.IsNullOrWhiteSpace(requirement.Title) ||
+            requirement.Evidence is null ||
+            requirement.Evidence.Count == 0 ||
+            requirement.Evidence.Any(evidence => evidence is null)))
         {
-            var result = new Dictionary<string, T>(
-                StringComparer.Ordinal);
-
-            foreach (var item in items)
-            {
-                if (item is null)
-                    throw new ArgumentException("Null Blueprint item.");
-
-                var id = selector(item);
-
-                if (string.IsNullOrWhiteSpace(id) ||
-                    !Regex.IsMatch(
-                        id,
-                        "^" + prefix + "-[A-Z0-9]+(-[A-Z0-9]+)*$"))
-                {
-                    throw new ArgumentException(
-                        "Invalid ID for " + prefix);
-                }
-
-                if (!result.TryAdd(id, item))
-                    throw new ArgumentException(
-                        "Duplicate Blueprint ID: " + id);
-            }
-
-            return result;
+            throw new ArgumentException(
+                "Only explicitly confirmed requirements with source evidence can generate a Blueprint.");
         }
 
-        var requirements = Index(
-            request.Requirements, x => x.Id, "REQ");
-
-        var features = Index(
-            request.Features, x => x.Id, "FEAT");
-
-        var screens = Index(
-            request.Screens, x => x.Id, "SCR");
-
-        var components = Index(
-            request.Components, x => x.Id, "CMP");
-
-        var actions = Index(
-            request.Actions, x => x.Id, "ACT");
-
-        var navigation = Index(
-    request.Navigation, x => x.Id, "NAV");
-
-        foreach (var requirement in request.Requirements)
+        if (request.Features.Any(feature => feature?.RequirementIds is null) ||
+            request.Screens.Any(screen => screen?.FeatureIds is null) ||
+            request.Actions.Any(action => action is null) ||
+            request.Navigation.Any(route => route is null))
         {
-            if (requirement.Status !=
-                    RequirementReviewStatus.Confirmed ||
-                requirement.ConfirmedBy is null ||
-                requirement.ConfirmedBy == Guid.Empty ||
-                requirement.ConfirmedAt is null ||
-                string.IsNullOrWhiteSpace(requirement.Title) ||
-                requirement.Evidence is null ||
-                requirement.Evidence.Count == 0)
-            {
-                throw new ArgumentException(
-                    "Only explicitly confirmed requirements can generate a Blueprint.");
-            }
+            throw new ArgumentException("Incomplete Blueprint proposal.");
         }
 
-        foreach (var feature in request.Features)
+        if (request.Components.Any(component =>
+            component is null || !registry.Supports(component.Type, component.Variant)))
         {
-            if (string.IsNullOrWhiteSpace(feature.Name) ||
-                feature.RequirementIds is null ||
-                feature.RequirementIds.Count == 0 ||
-                feature.RequirementIds.Distinct(
-                    StringComparer.Ordinal).Count() !=
-                    feature.RequirementIds.Count ||
-                feature.RequirementIds.Any(id =>
-                    !requirements.ContainsKey(id)))
-            {
-                throw new ArgumentException(
-                    "Invalid feature/requirement mapping.");
-            }
+            throw new ArgumentException("Unsupported Blueprint component or variant.");
         }
 
-        foreach (var screen in request.Screens)
-        {
-            if (string.IsNullOrWhiteSpace(screen.Name) ||
-                screen.FeatureIds is null ||
-                screen.FeatureIds.Count == 0 ||
-                screen.FeatureIds.Distinct(
-                    StringComparer.Ordinal).Count() !=
-                    screen.FeatureIds.Count ||
-                screen.FeatureIds.Any(id =>
-                    !features.ContainsKey(id)))
-            {
-                throw new ArgumentException(
-                    "Invalid screen/feature mapping.");
-            }
-        }
-
-        foreach (var component in request.Components)
-        {
-            if (!screens.ContainsKey(component.ScreenId) ||
-                !registry.Supports(
-                    component.Type, component.Variant))
-            {
-                throw new ArgumentException(
-                    "Unknown component screen or unsupported component.");
-            }
-        }
-
-        foreach (var action in request.Actions)
-        {
-            if (!components.ContainsKey(action.ComponentId))
-                throw new ArgumentException(
-                    "Action references an unknown component.");
-            if (action.Kind is not (
-                "navigate" or "submit" or
-                "update" or "openDialog" or "closeDialog"))
-            {
-                throw new ArgumentException("Unsupported mock action.");
-            }
-
-            if (action.Kind == "navigate")
-            {
-                if (action.NavigationId is null ||
-                    !navigation.ContainsKey(action.NavigationId))
-                {
-                    throw new ArgumentException(
-                        "Navigation action needs a valid route.");
-                }
-            }
-            else if (action.NavigationId is not null)
-            {
-                throw new ArgumentException(
-                    "Only navigate actions can reference routes.");
-            }
-        }
-
-        foreach (var route in request.Navigation)
-        {
-            if (!screens.ContainsKey(route.SourceScreenId) ||
-                !screens.ContainsKey(route.TargetScreenId) ||
-                !actions.TryGetValue(route.ActionId, out var action))
-            {
-                throw new ArgumentException(
-                    "Broken navigation reference.");
-            }
-
-            if (action.Kind != "navigate" ||
-                action.NavigationId != route.Id ||
-                components[action.ComponentId].ScreenId !=
-                    route.SourceScreenId)
-            {
-                throw new ArgumentException(
-                    "Navigation source/action mismatch.");
-            }
-        }
-
-        return new BlueprintDocument
+        var componentsByScreen = request.Components.ToLookup(component => component.ScreenId);
+        var actionsByComponent = request.Actions.ToLookup(action => action.ComponentId);
+        var blueprint = new BlueprintDocument
         {
             SchemaVersion = "1.0.0",
             BlueprintId = request.BlueprintId,
@@ -323,8 +195,7 @@ public sealed class BlueprintDraftGenerator(
                     Id = s.Id,
                     Name = s.Name,
                     FeatureIds = s.FeatureIds.ToList(),
-                    ComponentIds = request.Components
-                        .Where(c => c.ScreenId == s.Id)
+                    ComponentIds = componentsByScreen[s.Id]
                         .Select(c => c.Id).ToList()
                 }).ToList(),
 
@@ -339,8 +210,7 @@ public sealed class BlueprintDraftGenerator(
                         ["variant"] =
                             JsonSerializer.SerializeToElement(c.Variant)
                     },
-                    ActionIds = request.Actions
-                        .Where(a => a.ComponentId == c.Id)
+                    ActionIds = actionsByComponent[c.Id]
                         .Select(a => a.Id).ToList()
                 }).ToList(),
 
@@ -362,5 +232,11 @@ public sealed class BlueprintDraftGenerator(
                     ActionId = n.ActionId
                 }).ToList()
         };
+
+        var validation = BlueprintContractValidator.Validate(blueprint);
+        if (!validation.IsValid)
+            throw new ArgumentException(validation.Issues[0].Message);
+
+        return blueprint;
     }
 }

@@ -15,9 +15,8 @@ public sealed record RequirementReviewSnapshot(
     ReviewedRequirement Requirement
 );
 
-// Infrastructure will implement this after DB approval.
-// TryCommitAsync must atomically save the new revision
-// AND its audit event, using ExpectedRevision for concurrency.
+// TryCommitAsync saves the new revision and its audit event atomically,
+// using ExpectedRevision for optimistic concurrency.
 public interface IRequirementReviewStore
 {
     Task<RequirementReviewSnapshot?> FindAsync(
@@ -32,8 +31,7 @@ public interface IRequirementReviewStore
         CancellationToken cancellationToken = default);
 }
 
-// The real implementation must check project membership,
-// role permissions and access to the requirement.
+// Check whether the authenticated actor has review access to the project.
 public interface IRequirementReviewAccessPolicy
 {
     Task<bool> CanReviewAsync(
@@ -41,6 +39,15 @@ public interface IRequirementReviewAccessPolicy
         Guid authenticatedUserId,
         CancellationToken cancellationToken = default);
 }
+
+public sealed class RequirementReviewAccessDeniedException(string message)
+    : UnauthorizedAccessException(message);
+
+public sealed class RequirementReviewNotFoundException(string message)
+    : KeyNotFoundException(message);
+
+public sealed class RequirementReviewConflictException(string message)
+    : InvalidOperationException(message);
 
 public sealed class RequirementReviewWorkflow(
     IRequirementReviewStore store,
@@ -72,7 +79,7 @@ public sealed class RequirementReviewWorkflow(
             cancellationToken);
 
         if (!allowed)
-            throw new UnauthorizedAccessException(
+            throw new RequirementReviewAccessDeniedException(
                 "User is not authorized to review this project.");
 
         var snapshot = await store.FindAsync(
@@ -81,7 +88,7 @@ public sealed class RequirementReviewWorkflow(
             cancellationToken);
 
         if (snapshot is null)
-            throw new KeyNotFoundException(
+            throw new RequirementReviewNotFoundException(
                 "Requirement was not found.");
 
         if (snapshot.ProjectId != request.ProjectId ||
@@ -113,7 +120,7 @@ public sealed class RequirementReviewWorkflow(
             cancellationToken);
 
         if (!saved)
-            throw new InvalidOperationException(
+            throw new RequirementReviewConflictException(
                 "Concurrent review update. Reload and retry.");
 
         return result;

@@ -3,8 +3,12 @@ using Reqviora.Domain.Entities;
 
 namespace Reqviora.Infrastructure.Persistence;
 
-public sealed class ReqvioraDbContext(DbContextOptions<ReqvioraDbContext> options) : DbContext(options)
+public class ReqvioraDbContext : DbContext
 {
+    public ReqvioraDbContext(DbContextOptions<ReqvioraDbContext> options) : base(options) { }
+
+    protected ReqvioraDbContext(DbContextOptions options) : base(options) { }
+
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<Blueprint> Blueprints => Set<Blueprint>();
     public DbSet<Component> Components => Set<Component>();
@@ -18,9 +22,27 @@ public sealed class ReqvioraDbContext(DbContextOptions<ReqvioraDbContext> option
     public DbSet<Screen> Screens => Set<Screen>();
     public DbSet<User> Users => Set<User>();
 
+    public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
+    public DbSet<DesignDraftVersion> DesignDraftVersions => Set<DesignDraftVersion>();
+    public DbSet<DraftRequirement> DraftRequirements => Set<DraftRequirement>();
+    public DbSet<RequirementSourceEvidence> RequirementSourceEvidence => Set<RequirementSourceEvidence>();
+    public DbSet<DraftFeature> DraftFeatures => Set<DraftFeature>();
+    public DbSet<DraftFeatureRequirement> DraftFeatureRequirements => Set<DraftFeatureRequirement>();
+    public DbSet<DraftScreen> DraftScreens => Set<DraftScreen>();
+    public DbSet<DraftScreenFeature> DraftScreenFeatures => Set<DraftScreenFeature>();
+    public DbSet<ScreenAction> ScreenActions => Set<ScreenAction>();
+    public DbSet<NavigationEdge> NavigationEdges => Set<NavigationEdge>();
+    public DbSet<ValidationRun> ValidationRuns => Set<ValidationRun>();
+    public DbSet<ValidationFinding> ValidationFindings => Set<ValidationFinding>();
+    public DbSet<ApprovedRevision> ApprovedRevisions => Set<ApprovedRevision>();
+    public DbSet<ExportRecord> ExportRecords => Set<ExportRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+        DraftPersistenceConfiguration.Configure(modelBuilder, Database.IsSqlServer());
 
         modelBuilder.Entity<User>(entity =>
         {
