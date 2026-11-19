@@ -8,5 +8,5 @@ public sealed class Project : AggregateRoot
     public string Description { get; set; } = string.Empty;
     public Guid OwnerId { get; set; }
 
-    public Guid WorkspaceId { get; set; }
+    public Guid? WorkspaceId { get; set; }
 }

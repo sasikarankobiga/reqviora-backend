@@ -81,6 +81,8 @@ public static class DependencyInjection
             .AddScoped<IRequirementReviewAccessPolicy, ProjectOwnerRequirementReviewAccessPolicy>()
             .AddScoped<IRequirementReviewStore>(_ => new PostgresRequirementReviewStore(connectionString))
             .AddScoped<IUnitOfWork, UnitOfWork>()
+            .AddScoped<ProjectDraftService>()
+            .AddScoped<ProjectExportService>()
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IFileStorageService, FileStorageService>()
