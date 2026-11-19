@@ -25,6 +25,10 @@ public sealed class ReqvioraDbContext(
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
 
+    // Rashmina - Requirement Traceability
+    public DbSet<RequirementFeature> RequirementFeatures
+        => Set<RequirementFeature>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -33,19 +37,41 @@ public sealed class ReqvioraDbContext(
         modelBuilder.Entity<User>(entity =>
         {
             entity.HasIndex(user => user.NormalizedEmail).IsUnique();
-            entity.Property(user => user.Email).HasMaxLength(320).IsRequired();
-            entity.Property(user => user.NormalizedEmail).HasMaxLength(320).IsRequired();
-            entity.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
-            entity.Property(user => user.DisplayName).HasMaxLength(200).IsRequired();
+
+            entity.Property(user => user.Email)
+                .HasMaxLength(320)
+                .IsRequired();
+
+            entity.Property(user => user.NormalizedEmail)
+                .HasMaxLength(320)
+                .IsRequired();
+
+            entity.Property(user => user.PasswordHash)
+                .HasMaxLength(512)
+                .IsRequired();
+
+            entity.Property(user => user.DisplayName)
+                .HasMaxLength(200)
+                .IsRequired();
         });
 
         // Existing RefreshToken Configuration
         modelBuilder.Entity<RefreshToken>(entity =>
         {
             entity.HasIndex(token => token.TokenHash).IsUnique();
-            entity.HasIndex(token => new { token.UserId, token.ExpiresAt });
-            entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
-            entity.Property(token => token.ReplacedByTokenHash).HasMaxLength(64);
+
+            entity.HasIndex(token => new
+            {
+                token.UserId,
+                token.ExpiresAt
+            });
+
+            entity.Property(token => token.TokenHash)
+                .HasMaxLength(64)
+                .IsRequired();
+
+            entity.Property(token => token.ReplacedByTokenHash)
+                .HasMaxLength(64);
 
             entity.HasOne(token => token.User)
                 .WithMany()
@@ -57,7 +83,10 @@ public sealed class ReqvioraDbContext(
         modelBuilder.Entity<Role>(entity =>
         {
             entity.HasIndex(role => role.Name).IsUnique();
-            entity.Property(role => role.Name).HasMaxLength(100).IsRequired();
+
+            entity.Property(role => role.Name)
+                .HasMaxLength(100)
+                .IsRequired();
         });
 
         // Project Configuration
@@ -103,8 +132,11 @@ public sealed class ReqvioraDbContext(
         {
             entity.HasKey(member => member.Id);
 
-            entity.HasIndex(member => new { member.ProjectId, member.UserId })
-                .IsUnique();
+            entity.HasIndex(member => new
+            {
+                member.ProjectId,
+                member.UserId
+            }).IsUnique();
 
             entity.Property(member => member.Role)
                 .HasMaxLength(30)
@@ -126,7 +158,6 @@ public sealed class ReqvioraDbContext(
         {
             entity.HasKey(draft => draft.Id);
 
-            // One current draft per project
             entity.HasIndex(draft => draft.ProjectId)
                 .IsUnique();
 
@@ -146,6 +177,31 @@ public sealed class ReqvioraDbContext(
             entity.HasOne<Project>()
                 .WithMany()
                 .HasForeignKey(draft => draft.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Rashmina - Requirement Traceability (Task 4)
+        modelBuilder.Entity<RequirementFeature>(entity =>
+        {
+            entity.HasKey(link => link.Id);
+
+            // Prevent duplicate requirement-feature links
+            entity.HasIndex(link => new
+            {
+                link.RequirementId,
+                link.FeatureId
+            }).IsUnique();
+
+            // Requirement relationship
+            entity.HasOne<Requirement>()
+                .WithMany()
+                .HasForeignKey(link => link.RequirementId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Feature relationship
+            entity.HasOne<Feature>()
+                .WithMany()
+                .HasForeignKey(link => link.FeatureId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
