@@ -1,5 +1,6 @@
 
 using System.Text.Json;
+using Reqviora.Application.Features.Documents;
 
 namespace Reqviora.Application.Features.AIOrchestration;
 
@@ -47,8 +48,12 @@ public interface IStructuredAiProvider
 
 public static class AiContractValidator
 {
+    internal const int MaxStructuredJsonLength = 2_000_000;
+
     public static void Validate(AiProviderRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
+
         if (request.ProjectId == Guid.Empty ||
             request.RequestId == Guid.Empty)
         {
@@ -59,8 +64,7 @@ public static class AiContractValidator
         if (!Enum.IsDefined(request.Operation))
             throw new ArgumentException("Unsupported AI operation.");
 
-        if (request.LanguageCode is not (
-            "en" or "en-LK" or "ta" or "ta-LK"))
+        if (!InputStudioContractValidator.IsSupportedLanguage(request.LanguageCode))
         {
             throw new ArgumentException("Unsupported AI language.");
         }
@@ -74,6 +78,8 @@ public static class AiContractValidator
 
     public static void Validate(AiProviderResponse response)
     {
+        ArgumentNullException.ThrowIfNull(response);
+
         if (response.RequestId == Guid.Empty)
             throw new ArgumentException("AI response request ID is missing.");
 
@@ -86,6 +92,9 @@ public static class AiContractValidator
                 throw new ArgumentException(
                     "Successful AI response requires structured JSON.");
 
+            if (response.StructuredJson.Length > MaxStructuredJsonLength)
+                throw new ArgumentException("AI response is too large.");
+
             if (!string.IsNullOrEmpty(response.ErrorCode))
                 throw new ArgumentException(
                     "Successful AI response cannot contain an error code.");
@@ -93,7 +102,12 @@ public static class AiContractValidator
             try
             {
                 using var document = JsonDocument.Parse(
-                    response.StructuredJson);
+                    response.StructuredJson,
+                    new JsonDocumentOptions
+                    {
+                        AllowDuplicateProperties = false,
+                        MaxDepth = 32
+                    });
 
                 if (document.RootElement.ValueKind !=
                     JsonValueKind.Object)

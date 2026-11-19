@@ -5,6 +5,9 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="JsonSchema.Net" />
+    <EmbeddedResource Include="../../contracts/schemas/blueprint/blueprint.v1.schema.json"
+                      LogicalName="Reqviora.Blueprint.V1.Schema.json" />
   </ItemGroup>
 
   <PropertyGroup>

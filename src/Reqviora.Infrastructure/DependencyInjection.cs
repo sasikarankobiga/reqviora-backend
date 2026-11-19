@@ -8,10 +8,13 @@ using Microsoft.IdentityModel.Tokens;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.Authentication.Interfaces;
 using Reqviora.Application.Features.Projects.Interfaces;
+using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Infrastructure.Authentication;
+using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Repositories;
 using Reqviora.Infrastructure.Services;
+using Reqviora.Review.Persistence;
 
 namespace Reqviora.Infrastructure;
 
@@ -75,6 +78,8 @@ public static class DependencyInjection
         return services
             .AddScoped<IUserRepository, UserRepository>()
             .AddScoped<IProjectRepository, ProjectRepository>()
+            .AddScoped<IRequirementReviewAccessPolicy, ProjectOwnerRequirementReviewAccessPolicy>()
+            .AddScoped<IRequirementReviewStore>(_ => new PostgresRequirementReviewStore(connectionString))
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
