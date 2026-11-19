@@ -109,6 +109,9 @@ public static class DependencyInjection
             // Rashmina - Navigation Validation (Task 5)
             .AddScoped<NavigationEdgeService>()
 
+            // Rashmina - Blueprint Version History (Task 6)
+            .AddScoped<BlueprintVersionService>()
+
             // Existing Team Services
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()

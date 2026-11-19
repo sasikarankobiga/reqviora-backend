@@ -9,6 +9,11 @@ public sealed class ReqvioraDbContext(
 {
     public DbSet<Approval> Approvals => Set<Approval>();
     public DbSet<Blueprint> Blueprints => Set<Blueprint>();
+
+    // Rashmina - Blueprint Version History (Task 6)
+    public DbSet<BlueprintVersion> BlueprintVersions
+        => Set<BlueprintVersion>();
+
     public DbSet<Component> Components => Set<Component>();
     public DbSet<Feature> Features => Set<Feature>();
     public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();
@@ -32,8 +37,13 @@ public sealed class ReqvioraDbContext(
     // Rashmina - Feature and Screen Relationship (Task 5)
     public DbSet<FeatureScreen> FeatureScreens
         => Set<FeatureScreen>();
-    public DbSet<ScreenAction> ScreenActions => Set<ScreenAction>();
-    public DbSet<NavigationEdge> NavigationEdges => Set<NavigationEdge>();
+
+    public DbSet<ScreenAction> ScreenActions
+        => Set<ScreenAction>();
+
+    public DbSet<NavigationEdge> NavigationEdges
+        => Set<NavigationEdge>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -291,6 +301,37 @@ public sealed class ReqvioraDbContext(
             entity.HasOne<Project>()
                 .WithMany()
                 .HasForeignKey(edge => edge.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Rashmina - Blueprint Version History (Task 6)
+        modelBuilder.Entity<BlueprintVersion>(entity =>
+        {
+            entity.HasKey(version => version.Id);
+
+            // One Blueprint cannot have duplicate version numbers
+            entity.HasIndex(version => new
+            {
+                version.BlueprintId,
+                version.VersionNumber
+            }).IsUnique();
+
+            entity.Property(version => version.VersionNumber)
+                .IsRequired();
+
+            entity.Property(version => version.DefinitionJson)
+                .IsRequired();
+
+            entity.Property(version => version.CreatedAtUtc)
+                .IsRequired();
+
+            entity.Property(version => version.ChangeSummary)
+                .HasMaxLength(1000);
+
+            // Relationship with existing Blueprint
+            entity.HasOne<Blueprint>()
+                .WithMany()
+                .HasForeignKey(version => version.BlueprintId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
