@@ -63,7 +63,7 @@ dotnet ef database update --context ReqvioraDbContext \
 ```
 
 The migration adds row-level security and revokes Supabase Data API roles'
-access to the new server-owned tables. Apply it with the database migration
+access to the server-owned application tables. Apply it with the database migration
 owner. Existing project IDs, owner references, and optional workspace links are
 preserved. The private requirement review schema has its own setup script.
 

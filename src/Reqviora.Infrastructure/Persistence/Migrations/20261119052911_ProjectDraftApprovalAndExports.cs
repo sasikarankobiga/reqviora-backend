@@ -609,9 +609,19 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                 BEFORE UPDATE OR DELETE ON public."DesignDraftVersions"
                 FOR EACH ROW EXECUTE FUNCTION public.reqviora_reject_history_change();
 
+                CREATE TRIGGER "TR_ApprovedRevisions_NoTruncate"
+                BEFORE TRUNCATE ON public."ApprovedRevisions"
+                FOR EACH STATEMENT EXECUTE FUNCTION public.reqviora_reject_history_change();
+                CREATE TRIGGER "TR_DesignDraftVersions_NoTruncate"
+                BEFORE TRUNCATE ON public."DesignDraftVersions"
+                FOR EACH STATEMENT EXECUTE FUNCTION public.reqviora_reject_history_change();
+
                 DO $private_tables$
                 DECLARE
                     private_tables text[] := ARRAY[
+                            'Users', 'RefreshTokens', 'Roles', 'Projects', '__EFMigrationsHistory',
+                            'Approvals', 'Blueprints', 'Components', 'Features',
+                            'NavigationRoutes', 'ProjectDocuments', 'Requirements', 'Screens',
                             'ProjectMembers', 'Workspaces', 'ApprovedRevisions', 'ExportRecords',
                             'ProjectDrafts', 'DesignDraftVersions', 'DraftFeatures', 'DraftRequirements',
                             'DraftScreens', 'ValidationRuns', 'DraftFeatureRequirements', 'RequirementSourceEvidence',
