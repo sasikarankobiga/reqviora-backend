@@ -266,8 +266,10 @@ public sealed class ProjectDraftServiceTests
         var email = $"{Guid.NewGuid():N}@example.invalid";
         var owner = new User
         {
-            Email = email, NormalizedEmail = email.ToUpperInvariant(),
-            DisplayName = "Fixture owner", PasswordHash = "fixture"
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            DisplayName = "Fixture owner",
+            PasswordHash = "fixture"
         };
         var project = new Project { OwnerId = owner.Id, Name = "School library" };
         db.AddRange(owner, project);

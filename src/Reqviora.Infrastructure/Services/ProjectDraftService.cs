@@ -104,8 +104,11 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
         db.ApprovedRevisions.Add(revision);
         db.Approvals.Add(new Approval
         {
-            ApprovedRevisionId = revision.Id, ProjectId = projectId, ReviewerId = actorId,
-            Status = "Approved", CreatedAt = approvedAt
+            ApprovedRevisionId = revision.Id,
+            ProjectId = projectId,
+            ReviewerId = actorId,
+            Status = "Approved",
+            CreatedAt = approvedAt
         });
         draft.ApprovedRevisionId = revision.Id;
         RotateToken(draft);
@@ -247,7 +250,8 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
         {
             using var document = JsonDocument.Parse(draftJson, new JsonDocumentOptions
             {
-                AllowDuplicateProperties = false, MaxDepth = 32
+                AllowDuplicateProperties = false,
+                MaxDepth = 32
             });
             if (document.RootElement.ValueKind != JsonValueKind.Object)
                 throw new ArgumentException("The draft must be a JSON object.", nameof(draftJson));
