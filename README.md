@@ -143,6 +143,8 @@ create those roles as `NOLOGIN` roles before running the script.
 | 10–11 | The draft generator builds feature and screen graphs from confirmed requirements using the component registry. Regeneration validates provider output against Blueprint v1 and the graph validator, preserves confirmations and protected edits, and returns the current draft on invalid output or provider failure. |
 
 The provider, document parser, and transcriber are application interfaces. Tests
-supply fixture output while the G0-07 provider decision is pending. Blueprint
-schema, semantic validation, input pipeline, generation, and review checks run
-through the .NET 10 build and contract suites.
+supply fixture output while the G0-07 provider decision is pending.
+[Provider proposal](docs/adr/g0-07-ai-stt-provider-proposal.md)
+
+Blueprint schema, semantic validation, input pipeline, generation, and review
+checks run through the .NET 10 build and contract suites.
