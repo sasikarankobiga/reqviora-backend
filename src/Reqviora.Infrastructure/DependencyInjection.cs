@@ -97,12 +97,19 @@ public static class DependencyInjection
             .AddScoped<IProjectRepository, ProjectRepository>()
             .AddScoped<IUnitOfWork, UnitOfWork>()
 
-            // Rashmina - Project Draft Save / Resume
+            // Rashmina - Project Draft Save / Resume (Task 3)
             .AddScoped<ProjectDraftService>()
 
-            // Rashmina - Requirement Traceability
+            // Rashmina - Requirement Traceability (Task 4)
             .AddScoped<RequirementFeatureService>()
 
+            // Rashmina - Feature and Screen Validation (Task 5)
+            .AddScoped<FeatureScreenService>()
+
+            // Rashmina - Navigation Validation (Task 5)
+            .AddScoped<NavigationEdgeService>()
+
+            // Existing Team Services
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IFileStorageService, FileStorageService>()
