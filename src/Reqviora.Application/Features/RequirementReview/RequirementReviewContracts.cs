@@ -91,7 +91,7 @@ public static class RequirementReviewService
             throw new ArgumentException("Requirement ID mismatch.");
 
         if (current.Revision != decision.ExpectedRevision)
-            throw new InvalidOperationException(
+            throw new RequirementReviewConflictException(
                 "Requirement revision conflict.");
 
         if (decision.ActorId == Guid.Empty ||
@@ -105,14 +105,14 @@ public static class RequirementReviewService
             throw new ArgumentException("Invalid review decision.");
 
         if (current.Status == RequirementReviewStatus.Rejected)
-            throw new InvalidOperationException(
+            throw new RequirementReviewConflictException(
                 "Rejected requirement cannot be changed by this workflow.");
 
         if (current.Status == RequirementReviewStatus.Confirmed &&
             decision.Decision != RequirementDecisionKind.Edit)
         {
-            throw new InvalidOperationException(
-                "Confirmed requirement cannot be accepted or rejected again.");
+            throw new RequirementReviewConflictException(
+                "Confirmed requirements must be edited before another decision.");
         }
 
         ReviewedRequirement updated;
