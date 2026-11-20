@@ -25,6 +25,13 @@ public sealed class AuthController(IAuthService authService) : ControllerBase
     [ProducesResponseType<AuthResponseDto>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Login(LoginRequestDto request, CancellationToken cancellationToken)
     {
+        request = request with
+        {
+            IpAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            DeviceId = string.IsNullOrWhiteSpace(request.DeviceId)
+                ? Request.Headers.UserAgent.ToString()[..Math.Min(Request.Headers.UserAgent.ToString().Length, 200)]
+                : request.DeviceId
+        };
         var result = await authService.LoginAsync(request, cancellationToken);
         return result.Succeeded
             ? Ok(result.Value)

@@ -21,8 +21,11 @@ public class ReqvioraDbContext : DbContext
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Screen> Screens => Set<Screen>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<LoginAudit> LoginAudits => Set<LoginAudit>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     public DbSet<Workspace> Workspaces => Set<Workspace>();
+    public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
     public DbSet<DesignDraftVersion> DesignDraftVersions => Set<DesignDraftVersion>();
@@ -76,6 +79,13 @@ public class ReqvioraDbContext : DbContext
             entity.HasIndex(project => project.OwnerId);
             entity.Property(project => project.Name).HasMaxLength(200).IsRequired();
             entity.Property(project => project.Description).HasMaxLength(4000);
+            entity.Property(project => project.Industry).HasMaxLength(120);
+            entity.Property(project => project.TargetAudience).HasMaxLength(500);
+            entity.Property(project => project.ProjectType).HasMaxLength(120);
+            entity.Property(project => project.PrimaryPlatform).HasMaxLength(50).IsRequired();
+            entity.Property(project => project.TechnologyPreferences).HasMaxLength(2000);
+            entity.Property(project => project.Constraints).HasMaxLength(4000);
+            entity.Property(project => project.Integrations).HasMaxLength(4000);
         });
 
         modelBuilder.Entity<Approval>().Property(approval => approval.Status).HasMaxLength(50).IsRequired();
@@ -87,5 +97,28 @@ public class ReqvioraDbContext : DbContext
         modelBuilder.Entity<ProjectDocument>().Property(document => document.StoragePath).HasMaxLength(1000).IsRequired();
         modelBuilder.Entity<Requirement>().Property(requirement => requirement.Title).HasMaxLength(300).IsRequired();
         modelBuilder.Entity<Screen>().Property(screen => screen.Name).HasMaxLength(200).IsRequired();
+
+        modelBuilder.Entity<WorkspaceMember>(entity =>
+        {
+            entity.HasIndex(x => new { x.WorkspaceId, x.UserId }).IsUnique();
+            entity.Property(x => x.Role).HasMaxLength(50).IsRequired();
+            entity.HasOne<Workspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<LoginAudit>(entity =>
+        {
+            entity.HasIndex(x => new { x.UserId, x.OccurredAt });
+            entity.Property(x => x.NormalizedEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.IpAddress).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.DeviceId).HasMaxLength(200).IsRequired();
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.SetNull);
+        });
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.HasIndex(x => x.OccurredAt);
+            entity.Property(x => x.Method).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.Path).HasMaxLength(1000).IsRequired();
+            entity.Property(x => x.IpAddress).HasMaxLength(64).IsRequired();
+        });
     }
 }

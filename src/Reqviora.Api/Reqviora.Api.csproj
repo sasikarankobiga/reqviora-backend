@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Reqviora.Application\Reqviora.Application.csproj" />
     <ProjectReference Include="..\Reqviora.Infrastructure\Reqviora.Infrastructure.csproj" />
+    <ProjectReference Include="..\Reqviora.SqlServer.Persistence\Reqviora.SqlServer.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>

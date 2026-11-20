@@ -14,6 +14,7 @@ using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Repositories;
 using Reqviora.Infrastructure.Services;
+using Reqviora.Infrastructure.Security;
 using Reqviora.Review.Persistence;
 
 namespace Reqviora.Infrastructure;
@@ -31,13 +32,19 @@ public static class DependencyInjection
                 "Connection string 'ReqvioraDatabase' is required. Configure it with user secrets or an environment variable.");
         }
 
+        var databaseProvider = configuration["Database:Provider"] ?? "PostgreSql";
         services.AddDbContext<ReqvioraDbContext>(options =>
-            options.UseNpgsql(connectionString, npgsql =>
-                npgsql.MigrationsAssembly(typeof(ReqvioraDbContext).Assembly.FullName)));
+        {
+            if (databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
+                options.UseSqlServer(connectionString, sql => sql.MigrationsAssembly("Reqviora.SqlServer.Persistence"));
+            else
+                options.UseNpgsql(connectionString, npgsql =>
+                    npgsql.MigrationsAssembly(typeof(ReqvioraDbContext).Assembly.FullName));
+        });
 
         services.AddHealthChecks()
             .AddDbContextCheck<ReqvioraDbContext>(
-                name: "postgresql",
+                name: databaseProvider,
                 tags: ["ready"]);
 
         var jwtSection = configuration.GetSection(JwtOptions.SectionName);
@@ -74,6 +81,23 @@ public static class DependencyInjection
                 };
             });
         services.AddAuthorization();
+        services.AddDataProtection();
+        services.AddScoped<LoginSecurityService>();
+        services.AddScoped<ILoginSecurityService>(sp => sp.GetRequiredService<LoginSecurityService>());
+
+        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+        services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
+        services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
+        var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
+        services.AddHttpClient<IAIService, AIService>(client =>
+        {
+            client.BaseAddress = new Uri(ai.Endpoint, UriKind.Absolute);
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ai.TimeoutSeconds, 10, 600));
+        });
+        services.AddSingleton<AIBackgroundQueue>();
+        services.AddSingleton<IAIJobQueue>(sp => sp.GetRequiredService<AIBackgroundQueue>());
+        services.AddHostedService(sp => sp.GetRequiredService<AIBackgroundQueue>());
+        services.AddHostedService<RetentionWorker>();
 
         return services
             .AddScoped<IUserRepository, UserRepository>()
@@ -85,7 +109,6 @@ public static class DependencyInjection
             .AddScoped<ProjectExportService>()
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
-            .AddScoped<IFileStorageService, FileStorageService>()
-            .AddScoped<IAIService, AIService>();
+            .AddScoped<IFileStorageService, FileStorageService>();
     }
 }

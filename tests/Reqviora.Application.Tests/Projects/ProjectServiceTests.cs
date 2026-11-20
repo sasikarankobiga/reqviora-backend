@@ -18,13 +18,21 @@ public sealed class ProjectServiceTests
         var ownerId = Guid.NewGuid();
 
         var result = await fixture.Service.CreateAsync(
-            new CreateProjectDto("  Coffee Shop  ", "  Ordering workspace  "),
+            new CreateProjectDto("  Coffee Shop  ", "  Ordering workspace  ", " Retail ", " Diners ",
+                " SaaS ", " Web ", " .NET ", " PCI compliant ", " Stripe "),
             ownerId);
 
         var project = Assert.Single(fixture.Repository.Projects);
         Assert.Equal(ownerId, project.OwnerId);
         Assert.Equal("Coffee Shop", project.Name);
         Assert.Equal("Ordering workspace", project.Description);
+        Assert.Equal("Retail", result.Industry);
+        Assert.Equal("Diners", result.TargetAudience);
+        Assert.Equal("SaaS", result.ProjectType);
+        Assert.Equal("web", result.PrimaryPlatform);
+        Assert.Equal(".NET", result.TechnologyPreferences);
+        Assert.Equal("PCI compliant", result.Constraints);
+        Assert.Equal("Stripe", result.Integrations);
         Assert.Equal(Now, project.CreatedAt);
         Assert.Equal(ownerId.ToString(), project.CreatedBy);
         Assert.Equal(project.Id, result.Id);

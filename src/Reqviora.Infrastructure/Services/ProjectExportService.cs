@@ -7,7 +7,7 @@ using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Infrastructure.Services;
 
-public sealed class ProjectExportService(ReqvioraDbContext db)
+public sealed class ProjectExportService(ReqvioraDbContext db, Reqviora.Application.Common.Interfaces.IFileStorageService? storage = null)
 {
     public async Task<ExportRecord> GetOrCreateAsync(
         Guid projectId, Guid revisionId, Guid actorId, CancellationToken cancellationToken = default)
@@ -38,6 +38,11 @@ public sealed class ProjectExportService(ReqvioraDbContext db)
             ArchiveSha256 = package.ArchiveSha256
         };
         EnsureValid(record, projectId, revisionId);
+        if (storage is not null)
+        {
+            await using var archive = new MemoryStream(package.Archive, writable: false);
+            record.StoragePath = await storage.SaveAsync(archive, $"{projectId}-{revisionId}.zip", cancellationToken);
+        }
         db.ExportRecords.Add(record);
 
         try
