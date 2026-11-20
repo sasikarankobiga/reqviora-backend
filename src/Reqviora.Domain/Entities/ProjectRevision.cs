@@ -31,4 +31,5 @@ public sealed class ExportRecord : BaseEntity
     public string ManifestJson { get; init; } = "{}";
     public string ArchiveSha256 { get; init; } = string.Empty;
     public byte[] Archive { get; init; } = [];
+    public string? StoragePath { get; set; }
 }

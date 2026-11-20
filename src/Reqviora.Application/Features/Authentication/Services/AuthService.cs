@@ -11,23 +11,44 @@ public sealed class AuthService(
     IUserRepository users,
     ITokenService tokens,
     IPasswordHasher<User> passwordHasher,
+    ILoginSecurityService loginSecurity,
     IUnitOfWork unitOfWork,
     TimeProvider timeProvider) : IAuthService
 {
+    public AuthService(IUserRepository users, ITokenService tokens, IPasswordHasher<User> passwordHasher,
+        IUnitOfWork unitOfWork, TimeProvider timeProvider)
+        : this(users, tokens, passwordHasher, NoLoginSecurity.Instance, unitOfWork, timeProvider) { }
+
     public async Task<Result<AuthResponseDto>> LoginAsync(LoginRequestDto request, CancellationToken cancellationToken = default)
     {
         var user = await users.GetByEmailAsync(NormalizeEmail(request.Email), cancellationToken);
+        var ipAddress = request.IpAddress ?? "unknown";
+        var deviceId = request.DeviceId ?? "unknown";
         if (user is null)
+        {
+            await loginSecurity.RecordAsync(null, NormalizeEmail(request.Email), ipAddress, deviceId, false, false, cancellationToken);
             return Result<AuthResponseDto>.Failure("Invalid email or password.");
+        }
 
         var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
         if (verification == PasswordVerificationResult.Failed)
+        {
+            await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, false, false, cancellationToken);
             return Result<AuthResponseDto>.Failure("Invalid email or password.");
+        }
+
+        var otpRequired = await loginSecurity.RequiresOtpAsync(user, ipAddress, deviceId, cancellationToken);
+        if (otpRequired && (string.IsNullOrWhiteSpace(request.OtpCode) || !loginSecurity.ValidateOtp(user, request.OtpCode)))
+        {
+            await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, false, true, cancellationToken);
+            return Result<AuthResponseDto>.Failure("One-time password required.");
+        }
 
         if (verification == PasswordVerificationResult.SuccessRehashNeeded)
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
         var response = await CreateSessionAsync(user, cancellationToken);
+        await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, true, otpRequired, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<AuthResponseDto>.Success(response);
     }
@@ -126,4 +147,13 @@ public sealed class AuthService(
             refreshToken.ExpiresAt);
 
     private static string NormalizeEmail(string email) => email.Trim().ToUpperInvariant();
+
+    private sealed class NoLoginSecurity : ILoginSecurityService
+    {
+        public static readonly NoLoginSecurity Instance = new();
+        public Task<bool> RequiresOtpAsync(User user, string ipAddress, string deviceId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public bool ValidateOtp(User user, string code) => true;
+        public Task RecordAsync(User? user, string normalizedEmail, string ipAddress, string deviceId, bool succeeded,
+            bool otpRequired, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
 }

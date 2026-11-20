@@ -8,9 +8,30 @@ services:
       ASPNETCORE_HTTP_PORTS: 8080
       ConnectionStrings__ReqvioraDatabase: Host=postgres;Port=5432;Database=${POSTGRES_DB:-reqviora};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env}
+      Smtp__Host: ${SMTP__HOST:-}
+      Smtp__Port: ${SMTP__PORT:-587}
+      Smtp__UserName: ${SMTP__USERNAME:-}
+      Smtp__Password: ${SMTP__PASSWORD:-}
+      Smtp__FromAddress: ${SMTP__FROMADDRESS:-}
+      AI__ApiKey: ${AI__APIKEY:-}
+      AI__Model: ${AI__MODEL:-gpt-5-mini}
+      Storage__RootPath: /var/lib/reqviora/private-artifacts
+      Storage__RequireAntivirus: ${STORAGE__REQUIREANTIVIRUS:-true}
+      Storage__ClamAvHost: clamav
+    volumes:
+      - private_artifacts:/var/lib/reqviora/private-artifacts
     depends_on:
       postgres:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
+  clamav:
+    image: clamav/clamav:1.4
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/clamdcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
   postgres:
     image: postgres:16-alpine
     environment:
@@ -29,3 +50,4 @@ services:
 
 volumes:
   postgres_data:
+  private_artifacts:

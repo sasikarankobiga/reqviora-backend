@@ -137,6 +137,7 @@ public sealed class RequirementReviewsTests : IDisposable
         {
             builder.UseSetting("ConnectionStrings:ReqvioraDatabase", "Host=localhost;Database=unused");
             builder.UseSetting("Jwt:Key", "integration-test-signing-key-at-least-32-characters");
+            builder.UseSetting("Security:AuditEnabled", "false");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<IRequirementReviewAccessPolicy>();

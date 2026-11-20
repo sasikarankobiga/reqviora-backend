@@ -9,4 +9,7 @@ public sealed class User : AggregateRoot
     public string PasswordHash { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public Guid? RoleId { get; set; }
+    public bool MfaEnabled { get; set; }
+    public string? MfaSecretProtected { get; set; }
+    public string? RecoveryCodeHashes { get; set; }
 }
