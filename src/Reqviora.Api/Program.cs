@@ -8,6 +8,13 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (!builder.Environment.IsDevelopment() &&
+    !builder.Configuration.GetValue<bool>("Storage:RequireAntivirus"))
+{
+    throw new InvalidOperationException(
+        "Production requires Storage:RequireAntivirus=true and a reachable antivirus service.");
+}
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddRateLimiter(options =>

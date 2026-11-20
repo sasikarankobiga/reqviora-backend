@@ -62,9 +62,13 @@ public sealed class LoginSecurityService(
     {
         db.LoginAudits.Add(new LoginAudit
         {
-            UserId = user?.Id, NormalizedEmail = normalizedEmail, IpAddress = ipAddress[..Math.Min(ipAddress.Length, 64)],
-            DeviceId = deviceId[..Math.Min(deviceId.Length, 200)], Succeeded = succeeded,
-            OtpRequired = otpRequired, OccurredAt = clock.GetUtcNow()
+            UserId = user?.Id,
+            NormalizedEmail = normalizedEmail,
+            IpAddress = ipAddress[..Math.Min(ipAddress.Length, 64)],
+            DeviceId = deviceId[..Math.Min(deviceId.Length, 200)],
+            Succeeded = succeeded,
+            OtpRequired = otpRequired,
+            OccurredAt = clock.GetUtcNow()
         });
         await db.SaveChangesAsync(cancellationToken);
     }

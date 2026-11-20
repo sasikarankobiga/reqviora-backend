@@ -26,6 +26,7 @@ public sealed class StorageOptions
 public sealed class AiOptions
 {
     public const string SectionName = "AI";
+    public bool Enabled { get; set; }
     public string Provider { get; set; } = "OpenAICompatible";
     public string Endpoint { get; set; } = "https://api.openai.com/v1/";
     public string ApiKey { get; set; } = "";

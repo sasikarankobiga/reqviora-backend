@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -86,6 +87,59 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             $"/api/projects/{_factory.Project.Id}/drafts/current",
             new { expectedConcurrencyToken = (Guid?)null });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Pending_ai_and_disabled_mcp_are_not_available()
+    {
+        using var client = CreateClient(_factory.Owner);
+        using var aiJob = await client.PostAsJsonAsync("/api/ai/jobs", new { prompt = "test" });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, aiJob.StatusCode);
+
+        using var extraction = await client.PostAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
+            new { languageCode = "en", inputText = "test", evidence = Array.Empty<object>() });
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, extraction.StatusCode);
+
+        using var mcp = await client.GetAsync("/api/mcp/v1/catalog");
+        Assert.Equal(HttpStatusCode.NotFound, mcp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Document_upload_is_owner_scoped_validated_and_does_not_expose_storage_path()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var validForm = DocumentForm("requirements.txt", "text/plain");
+        using var uploaded = await owner.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/documents",
+            validForm);
+        Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
+        var responseBody = await uploaded.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("storagePath", responseBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, _factory.Storage.Saves);
+
+        using var mismatchedForm = DocumentForm("requirements.exe", "text/plain");
+        using var mismatched = await owner.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/documents",
+            mismatchedForm);
+        Assert.Equal(HttpStatusCode.BadRequest, mismatched.StatusCode);
+        Assert.Equal(1, _factory.Storage.Saves);
+
+        _factory.Storage.RejectNext = true;
+        using var infectedForm = DocumentForm("infected.txt", "text/plain");
+        using var infected = await owner.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/documents",
+            infectedForm);
+        Assert.Equal(HttpStatusCode.BadRequest, infected.StatusCode);
+        Assert.Equal(1, _factory.Storage.Saves);
+
+        using var other = CreateClient(_factory.OtherUser);
+        using var foreignForm = DocumentForm("requirements.txt", "text/plain");
+        using var foreign = await other.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/documents",
+            foreignForm);
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(1, _factory.Storage.Saves);
     }
 
     [Fact]
@@ -270,6 +324,15 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         return BlueprintJsonContract.Parse(json.ToJsonString());
     }
 
+    private static MultipartFormDataContent DocumentForm(string fileName, string mediaType)
+    {
+        var form = new MultipartFormDataContent();
+        var file = new ByteArrayContent(Encoding.UTF8.GetBytes("REQVIORA requirements"));
+        file.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+        form.Add(file, "file", fileName);
+        return form;
+    }
+
     private sealed class WorkflowApiFactory : WebApplicationFactory<Program>
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -278,6 +341,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         public User OtherUser { get; } = NewUser("other@example.test");
         public Workspace Workspace { get; }
         public Project Project { get; }
+        public TestFileStorage Storage { get; } = new();
 
         public WorkflowApiFactory()
         {
@@ -308,7 +372,9 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<ReqvioraDbContext>>();
                 services.RemoveAll<ReqvioraDbContext>();
+                services.RemoveAll<IFileStorageService>();
                 services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection));
+                services.AddSingleton<IFileStorageService>(Storage);
             });
         }
 
@@ -326,5 +392,26 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             PasswordHash = "not-used-in-tests",
             DisplayName = email
         };
+
+        public sealed class TestFileStorage : IFileStorageService
+        {
+            public int Saves { get; private set; }
+            public bool RejectNext { get; set; }
+
+            public Task<string> SaveAsync(
+                Stream content,
+                string fileName,
+                CancellationToken cancellationToken = default)
+            {
+                if (RejectNext)
+                {
+                    RejectNext = false;
+                    throw new InvalidDataException("Simulated malware detection.");
+                }
+
+                Saves++;
+                return Task.FromResult($"private/{Guid.NewGuid():N}{Path.GetExtension(fileName)}");
+            }
+        }
     }
 }

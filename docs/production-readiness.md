@@ -2,9 +2,9 @@
 
 ## Required secrets
 
-Supply `ConnectionStrings__ReqvioraDatabase`, `Jwt__Key`, SMTP credentials, and `AI__ApiKey` through the deployment platform's secret store. Do not place production values in `appsettings.json` or `.env` committed to Git. Set `Database__Provider=SqlServer` when using the checked-in SQL Server migrations; PostgreSQL is the default.
+Supply `ConnectionStrings__ReqvioraDatabase`, `Jwt__Key`, and SMTP credentials through the deployment platform's secret store. Do not place production values in `appsettings.json` or `.env` committed to Git. Set `Database__Provider=SqlServer` when using the checked-in SQL Server migrations; PostgreSQL is the default.
 
-Set `AI__Endpoint`, `AI__Model`, and `AI__TranscriptionModel` for the approved OpenAI-compatible provider. Keep `Mcp__Enabled=false` until G0-07 approves the read-only V1 catalog; the implementation intentionally exposes no mutating MCP tools.
+Keep `AI__Enabled=false` while G0-07 provider approval is pending. After explicit approval, supply `AI__ApiKey` from the secret store, set the approved `AI__Endpoint`, `AI__Model`, and `AI__TranscriptionModel`, and then set `AI__Enabled=true`. Keep `Mcp__Enabled=false` unless its read-only scope is separately approved; the implementation exposes no mutating MCP tools.
 
 Set `Security__AdminEmails__0` (and subsequent indexes) for administrator accounts. Each administrator must call `POST /api/security/mfa/provision`, store the one-time recovery codes offline, and confirm the authenticator with `POST /api/security/mfa/verify`. Administrators and suspicious sign-ins require TOTP after enrollment.
 

@@ -43,14 +43,22 @@ public sealed class LoginSecurityServiceTests
         db.Users.Add(user);
         db.LoginAudits.Add(new LoginAudit
         {
-            UserId = user.Id, NormalizedEmail = user.NormalizedEmail, IpAddress = "127.0.0.1",
-            DeviceId = "known", Succeeded = true, OccurredAt = DateTimeOffset.UtcNow.AddMinutes(-2)
+            UserId = user.Id,
+            NormalizedEmail = user.NormalizedEmail,
+            IpAddress = "127.0.0.1",
+            DeviceId = "known",
+            Succeeded = true,
+            OccurredAt = DateTimeOffset.UtcNow.AddMinutes(-2)
         });
         for (var index = 0; index < 3; index++)
             db.LoginAudits.Add(new LoginAudit
             {
-                UserId = user.Id, NormalizedEmail = user.NormalizedEmail, IpAddress = "127.0.0.1",
-                DeviceId = "known", Succeeded = false, OccurredAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+                UserId = user.Id,
+                NormalizedEmail = user.NormalizedEmail,
+                IpAddress = "127.0.0.1",
+                DeviceId = "known",
+                Succeeded = false,
+                OccurredAt = DateTimeOffset.UtcNow.AddMinutes(-1)
             });
         await db.SaveChangesAsync();
 

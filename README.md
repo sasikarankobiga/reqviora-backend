@@ -66,7 +66,8 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `Jwt:RefreshTokenDays` | No | Refresh-token lifetime; defaults to 7 days |
 | `Database:Provider` | No | `PostgreSql` (default) or `SqlServer` |
 | `Smtp:*` | Production email | SMTP host, port, TLS, sender, and secret-backed credentials |
-| `AI:*` | AI features | OpenAI-compatible endpoint, model, and secret-backed API key |
+| `AI:Enabled` | No | Defaults to `false`; enable only after G0-07 provider approval |
+| `AI:*` | After provider approval | OpenAI-compatible endpoint, model, and secret-backed API key |
 | `Storage:*` | Documents/exports | Private root, limits, retention, and ClamAV connection |
 | `Security:AdminEmails` | Admin MFA | Accounts that always receive an OTP challenge after MFA enrollment |
 
@@ -153,8 +154,9 @@ Supabase. For standalone PostgreSQL, create those roles as `NOLOGIN` roles first
 | 8–9 | Structured extraction limits candidates to known source evidence. Human review supports accept, edit, reject, defer, and clarification. The review API records decisions with revision checks and audit history. |
 | 10–11 | The draft generator builds feature and screen graphs from confirmed requirements using the component registry. Regeneration validates provider output against Blueprint v1 and the graph validator, preserves confirmations and protected edits, and returns the current draft on invalid output or provider failure. |
 
-The approved V1 integration uses the configurable OpenAI-compatible gateway for
-structured candidates and Tamil/English transcription. AI output never bypasses
-human confirmation. G0-07 MCP is feature-gated (`Mcp__Enabled=false` by default)
+The provider-independent V1 contracts support a configurable OpenAI-compatible gateway for
+structured candidates and Tamil/English transcription. Provider execution is disabled by
+default (`AI__Enabled=false`) while G0-07 approval remains pending, and AI output never bypasses
+human confirmation. MCP is separately feature-gated (`Mcp__Enabled=false` by default)
 and limited to authenticated, owner-scoped read-only tools, resources, and prompts.
 Blueprint schema, input pipeline, generation, and review checks run in .NET 10 CI.

@@ -96,7 +96,7 @@ An approval requires a passing validation run for the exact current draft versio
 
 Swagger is available at `/swagger` in Development. Apply the EF migrations and the matching PostgreSQL `.sql` or SQL Server `.sqlserver.sql` Requirement Review schema before using all endpoints.
 
-## Input intelligence and approved MCP V1 scope
+## Input intelligence and feature-gated MCP V1 scope
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -106,4 +106,4 @@ Swagger is available at `/swagger` in Development. Apply the EF migrations and t
 | POST | `/api/mcp/v1/tools/call` | Invoke an allow-listed owner-scoped read-only tool |
 | GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
 
-Set `Mcp__Enabled=true` only after G0-07 scope approval. The V1 surface contains no mutating MCP tool.
+Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool.

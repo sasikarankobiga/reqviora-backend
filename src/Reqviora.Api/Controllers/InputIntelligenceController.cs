@@ -1,21 +1,38 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.DocumentIntelligence;
 using Reqviora.Application.Features.Documents;
 using Reqviora.Application.Features.VoiceProcessing;
 using Reqviora.Infrastructure.Persistence;
+using Reqviora.Infrastructure.Services;
 
 namespace Reqviora.Api.Controllers;
 
 [ApiController, Authorize, Route("api/projects/{projectId:guid}/input-intelligence")]
-public sealed class InputIntelligenceController(ReqvioraDbContext db) : ControllerBase
+public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<AiOptions> options) : ControllerBase
 {
     public sealed record ExtractRequirementsRequest(
         string LanguageCode,
         string InputText,
         IReadOnlyList<SourceEvidenceRef> Evidence);
+
+    public sealed class TranscribeRequest
+    {
+        [Required]
+        public IFormFile Audio { get; init; } = null!;
+
+        [Required, StringLength(10)]
+        public string LanguageCode { get; init; } = string.Empty;
+
+        [Range(1, 1800)]
+        public int DurationSeconds { get; init; }
+
+        public bool ConsentGranted { get; init; }
+    }
 
     [HttpPost("requirements/extract")]
     public async Task<IActionResult> ExtractRequirements(
@@ -24,6 +41,8 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db) : Controll
         [FromServices] IStructuredAiProvider provider,
         CancellationToken cancellationToken)
     {
+        if (!options.Value.Enabled)
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         var userId = ProjectApiAccess.RequireUserId(User);
         await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
         var request = new AiProviderRequest(
@@ -36,22 +55,28 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db) : Controll
     }
 
     [HttpPost("voice/transcribe")]
+    [Consumes("multipart/form-data")]
     [RequestSizeLimit(26_214_400)]
     public async Task<IActionResult> Transcribe(
         Guid projectId,
-        [FromForm] IFormFile audio,
-        [FromForm] string languageCode,
-        [FromForm] int durationSeconds,
-        [FromForm] bool consentGranted,
+        [FromForm] TranscribeRequest body,
         [FromServices] IVoiceTranscriber transcriber,
         CancellationToken cancellationToken)
     {
+        if (!options.Value.Enabled)
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         var userId = ProjectApiAccess.RequireUserId(User);
         await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
         var request = new VoiceInputRequest(
-            projectId, Guid.NewGuid(), languageCode, audio.ContentType, audio.Length, durationSeconds, consentGranted);
+            projectId,
+            Guid.NewGuid(),
+            body.LanguageCode,
+            body.Audio.ContentType,
+            body.Audio.Length,
+            body.DurationSeconds,
+            body.ConsentGranted);
         InputStudioContractValidator.Validate(request);
-        await using var stream = audio.OpenReadStream();
+        await using var stream = body.Audio.OpenReadStream();
         return Ok(await transcriber.TranscribeAsync(request, stream, cancellationToken));
     }
 }

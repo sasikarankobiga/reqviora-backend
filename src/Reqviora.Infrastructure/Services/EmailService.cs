@@ -16,7 +16,9 @@ public sealed class EmailService(IOptions<SmtpOptions> options) : IEmailService
 
         using var message = new MailMessage
         {
-            From = new MailAddress(value.FromAddress, value.FromName), Subject = subject, Body = body,
+            From = new MailAddress(value.FromAddress, value.FromName),
+            Subject = subject,
+            Body = body,
             IsBodyHtml = false
         };
         message.To.Add(new MailAddress(to));
