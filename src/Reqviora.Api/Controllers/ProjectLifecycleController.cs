@@ -37,7 +37,8 @@ public sealed class ProjectLifecycleController(ProjectDraftService drafts, Proje
     public async Task<IActionResult> Validate(Guid projectId, TokenRequest request, CancellationToken ct) =>
         UserId(out var actor) ? Ok(await drafts.ValidateAsync(projectId, actor, request.ExpectedToken, ct)) : Unauthorized();
 
-    [HttpPost("approvals")]
+    // Compatibility route; canonical approval API is /api/projects/{projectId}/approvals.
+    [HttpPost("draft/approve")]
     public async Task<IActionResult> Approve(Guid projectId, ApprovalRequest request, CancellationToken ct) =>
         UserId(out var actor)
             ? Ok(await drafts.ApproveAsync(projectId, actor, request.ExpectedToken, request.ValidationRunId, ct))
