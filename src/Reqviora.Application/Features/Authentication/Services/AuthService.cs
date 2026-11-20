@@ -63,7 +63,8 @@ public sealed class AuthService(
         {
             Email = request.Email.Trim(),
             NormalizedEmail = normalizedEmail,
-            DisplayName = request.DisplayName.Trim()
+            DisplayName = request.DisplayName.Trim(),
+            EmailVerified = false
         };
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
@@ -116,7 +117,7 @@ public sealed class AuthService(
         var user = await users.GetByIdAsync(userId, cancellationToken);
         return user is null
             ? Result<UserProfileDto>.Failure("User was not found.")
-            : Result<UserProfileDto>.Success(new UserProfileDto(user.Id, user.Email, user.DisplayName));
+            : Result<UserProfileDto>.Success(new UserProfileDto(user.Id, user.Email, user.DisplayName, user.EmailVerified));
     }
 
     private async Task<AuthResponseDto> CreateSessionAsync(User user, CancellationToken cancellationToken)

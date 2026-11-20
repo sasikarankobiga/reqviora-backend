@@ -64,12 +64,13 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `Jwt:Key` | Yes | Signing key supplied through secrets/environment |
 | `Jwt:AccessTokenMinutes` | No | Access-token lifetime; defaults to 15 minutes |
 | `Jwt:RefreshTokenDays` | No | Refresh-token lifetime; defaults to 7 days |
+| `AccountLinks:BaseUrl` | Email workflows | HTTPS frontend base URL used in verification/reset links |
 | `Database:Provider` | No | `PostgreSql` (default) or `SqlServer` |
 | `Smtp:*` | Production email | SMTP host, port, TLS, sender, and secret-backed credentials |
 | `AI:Enabled` | No | Defaults to `false`; enable only after G0-07 provider approval |
 | `AI:*` | After provider approval | OpenAI-compatible endpoint, model, and secret-backed API key |
 | `Storage:*` | Documents/exports | Private root, limits, retention, and ClamAV connection |
-| `Security:AdminEmails` | Admin MFA | Accounts that always receive an OTP challenge after MFA enrollment |
+| `Security:AdminEmails` | Admin MFA | Accounts blocked from password login until MFA is enrolled, then always challenged |
 
 No passwords, connection credentials, or JWT signing keys should be committed.
 
@@ -110,8 +111,15 @@ Day 3 completes authenticated project creation, owner-scoped listing, single-pro
 - `POST /api/auth/refresh`
 - `POST /api/auth/logout`
 - `GET /api/users/me` (Bearer token required)
+- `POST /api/account-security/email-verification/request` (Bearer token required)
+- `POST /api/account-security/email-verification/confirm`
+- `POST /api/account-security/password/forgot`
+- `POST /api/account-security/password/reset`
+- `POST /api/account-security/email-change/request` (Bearer token required)
+- `POST /api/account-security/email-change/confirm`
 
 Refresh tokens are returned only when issued or rotated. The database stores their SHA-256 hashes, not the raw token values. Logout is idempotent and revokes an active refresh token.
+Email verification, password reset, and email-change tokens are random, stored only as SHA-256 hashes, expire after 30 minutes, and are single-use. Password reset and confirmed email change revoke active refresh-token sessions. Authentication endpoints have a stricter per-IP rate limit than the global API limit.
 
 ### Project endpoints
 

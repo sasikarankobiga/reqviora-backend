@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Reqviora.Application.Features.Authentication.DTOs;
 using Reqviora.Application.Features.Authentication.Interfaces;
 
@@ -7,6 +8,7 @@ namespace Reqviora.Api.Controllers;
 
 [ApiController]
 [Route("api/auth")]
+[EnableRateLimiting("authentication")]
 public sealed class AuthController(IAuthService authService) : ControllerBase
 {
     [AllowAnonymous]
