@@ -22,7 +22,11 @@ public sealed class LoginSecurityService(
         var admin = (configuration.GetSection("Security:AdminEmails").Get<string[]>() ?? [])
             .Contains(user.Email, StringComparer.OrdinalIgnoreCase);
         var since = clock.GetUtcNow().AddMinutes(-30);
-        var failures = await db.LoginAudits.CountAsync(x => x.UserId == user.Id && !x.Succeeded && x.OccurredAt >= since, cancellationToken);
+        var failureTimes = await db.LoginAudits.AsNoTracking()
+            .Where(x => x.UserId == user.Id && !x.Succeeded)
+            .Select(x => x.OccurredAt)
+            .ToArrayAsync(cancellationToken);
+        var failures = failureTimes.Count(occurredAt => occurredAt >= since);
         var known = await db.LoginAudits.AnyAsync(x => x.UserId == user.Id && x.Succeeded &&
             x.IpAddress == ipAddress && x.DeviceId == deviceId, cancellationToken);
         var hasHistory = await db.LoginAudits.AnyAsync(x => x.UserId == user.Id && x.Succeeded, cancellationToken);

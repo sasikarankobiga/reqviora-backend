@@ -15,10 +15,15 @@ public sealed class MfaController(ReqvioraDbContext db, IDataProtectionProvider 
     public sealed record VerifyMfa(string Code);
 
     [HttpPost("provision")]
-    public async Task<IActionResult> Provision(CancellationToken ct)
+    public async Task<IActionResult> Provision(
+        [FromQuery] string? currentCode,
+        [FromServices] LoginSecurityService security,
+        CancellationToken ct)
     {
         if (!UserId(out var id)) return Unauthorized();
         var user = await db.Users.SingleAsync(x => x.Id == id, ct);
+        if (user.MfaEnabled && (string.IsNullOrWhiteSpace(currentCode) || !security.ValidateOtp(user, currentCode)))
+            return Unauthorized();
         var secret = RandomNumberGenerator.GetBytes(20);
         var secretText = Convert.ToBase64String(secret);
         user.MfaSecretProtected = protection.CreateProtector("Reqviora.MfaSecret.v1").Protect(secretText);

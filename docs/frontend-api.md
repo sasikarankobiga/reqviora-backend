@@ -94,4 +94,16 @@ An approval requires a passing validation run for the exact current draft versio
 - `Jwt__RefreshTokenDays`
 - `Cors__AllowedOrigins__0` and subsequent indexes for browser clients
 
-Swagger is available at `/swagger` in the Development environment. Apply the EF migrations and `database/reqviora_review/001_create_review_store.sql` before using all endpoints.
+Swagger is available at `/swagger` in Development. Apply the EF migrations and the matching PostgreSQL `.sql` or SQL Server `.sqlserver.sql` Requirement Review schema before using all endpoints.
+
+## Input intelligence and approved MCP V1 scope
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/projects/{projectId}/input-intelligence/requirements/extract` | Generate evidence-bound requirement candidates; human review is still mandatory |
+| POST | `/api/projects/{projectId}/input-intelligence/voice/transcribe` | Transcribe consented Tamil or English multipart audio |
+| GET | `/api/mcp/v1/catalog` | Feature-gated read-only tools, resources and prompt catalog |
+| POST | `/api/mcp/v1/tools/call` | Invoke an allow-listed owner-scoped read-only tool |
+| GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
+
+Set `Mcp__Enabled=true` only after G0-07 scope approval. The V1 surface contains no mutating MCP tool.
