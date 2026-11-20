@@ -62,8 +62,15 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `Jwt:Key` | Yes | Signing key supplied through secrets/environment |
 | `Jwt:AccessTokenMinutes` | No | Access-token lifetime; defaults to 15 minutes |
 | `Jwt:RefreshTokenDays` | No | Refresh-token lifetime; defaults to 7 days |
+| `Database:Provider` | No | `PostgreSql` (default) or `SqlServer` |
+| `Smtp:*` | Production email | SMTP host, port, TLS, sender, and secret-backed credentials |
+| `AI:*` | AI features | OpenAI-compatible endpoint, model, and secret-backed API key |
+| `Storage:*` | Documents/exports | Private root, limits, retention, and ClamAV connection |
+| `Security:AdminEmails` | Admin MFA | Accounts that always receive an OTP challenge after MFA enrollment |
 
 No passwords, connection credentials, or JWT signing keys should be committed.
+
+See [production readiness](docs/production-readiness.md) for secret management, MFA provisioning, antivirus, monitoring, backup, restore, and release checks.
 
 ## Build
 

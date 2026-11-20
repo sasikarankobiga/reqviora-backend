@@ -22,6 +22,13 @@ public sealed class ProjectService(
         {
             Name = request.Name.Trim(),
             Description = request.Description.Trim(),
+            Industry = request.Industry.Trim(),
+            TargetAudience = request.TargetAudience.Trim(),
+            ProjectType = request.ProjectType.Trim(),
+            PrimaryPlatform = request.PrimaryPlatform.Trim().ToLowerInvariant(),
+            TechnologyPreferences = request.TechnologyPreferences.Trim(),
+            Constraints = request.Constraints.Trim(),
+            Integrations = request.Integrations.Trim(),
             OwnerId = ownerId,
             CreatedAt = timeProvider.GetUtcNow(),
             CreatedBy = ownerId.ToString()
@@ -71,5 +78,12 @@ public sealed class ProjectService(
         project.Description,
         project.OwnerId,
         project.CreatedAt,
-        project.LastModifiedAt);
+        project.LastModifiedAt,
+        project.Industry,
+        project.TargetAudience,
+        project.ProjectType,
+        project.PrimaryPlatform,
+        project.TechnologyPreferences,
+        project.Constraints,
+        project.Integrations);
 }

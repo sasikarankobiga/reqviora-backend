@@ -89,6 +89,7 @@ internal static class DraftPersistenceConfiguration
         var export = model.Entity<ExportRecord>();
         export.Property(x => x.GeneratorVersion).HasMaxLength(32);
         export.Property(x => x.ArchiveSha256).HasMaxLength(64).IsUnicode(false);
+        export.Property(x => x.StoragePath).HasMaxLength(1000);
         export.HasIndex(x => new { x.ApprovedRevisionId, x.GeneratorVersion }).IsUnique();
         export.HasOne<ApprovedRevision>().WithMany().HasForeignKey(x => x.ApprovedRevisionId)
             .OnDelete(DeleteBehavior.NoAction);
