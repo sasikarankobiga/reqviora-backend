@@ -13,6 +13,9 @@ namespace Reqviora.Api.Controllers;
 [Route("api/workspaces")]
 public sealed class WorkspacesController(ReqvioraDbContext db) : ControllerBase
 {
+    public sealed record CreateWorkspace(string Name);
+    public sealed record AddMember(Guid UserId, string Role = "Member");
+
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<WorkspaceResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<WorkspaceResponse>>> GetAll(CancellationToken cancellationToken)
