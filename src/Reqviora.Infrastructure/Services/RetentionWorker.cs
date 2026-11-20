@@ -21,8 +21,10 @@ public sealed class RetentionWorker(IServiceScopeFactory scopes, IConfiguration 
                 var auditDays = Math.Max(30, configuration.GetValue("Security:AuditRetentionDays", 2555));
                 var loginCutoff = clock.GetUtcNow().AddDays(-Math.Min(auditDays, 365));
                 var auditCutoff = clock.GetUtcNow().AddDays(-auditDays);
+                var expiredTokenCutoff = clock.GetUtcNow().AddDays(-1);
                 await db.LoginAudits.Where(x => x.OccurredAt < loginCutoff).ExecuteDeleteAsync(stoppingToken);
                 await db.AuditEvents.Where(x => x.OccurredAt < auditCutoff).ExecuteDeleteAsync(stoppingToken);
+                await db.AccountActionTokens.Where(x => x.ExpiresAt < expiredTokenCutoff).ExecuteDeleteAsync(stoppingToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

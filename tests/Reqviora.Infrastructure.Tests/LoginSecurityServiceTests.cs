@@ -10,6 +10,32 @@ namespace Reqviora.Infrastructure.Tests;
 public sealed class LoginSecurityServiceTests
 {
     [Fact]
+    public async Task Configured_admin_requires_mfa_enrollment_before_login()
+    {
+        await using var database = await PersistenceDatabase.CreateAsync("sqlite");
+        await using var db = database.Open();
+        var protection = new EphemeralDataProtectionProvider();
+        var user = new User
+        {
+            Email = "admin@example.test",
+            NormalizedEmail = "ADMIN@EXAMPLE.TEST",
+            DisplayName = "Admin",
+            PasswordHash = "unused"
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Security:AdminEmails:0"] = user.Email
+            })
+            .Build();
+        var service = new LoginSecurityService(db, protection, configuration, TimeProvider.System);
+
+        Assert.True(await service.RequiresOtpAsync(user, "127.0.0.1", "test", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Known_device_is_allowed_but_new_device_requires_otp_after_enrollment()
     {
         await using var database = await PersistenceDatabase.CreateAsync("sqlite");

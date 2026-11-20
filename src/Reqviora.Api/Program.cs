@@ -15,6 +15,15 @@ if (!builder.Environment.IsDevelopment() &&
         "Production requires Storage:RequireAntivirus=true and a reachable antivirus service.");
 }
 
+if (!builder.Environment.IsDevelopment() &&
+    (!Uri.TryCreate(builder.Configuration["AccountLinks:BaseUrl"], UriKind.Absolute, out var accountLinksBaseUrl) ||
+     accountLinksBaseUrl.Scheme != Uri.UriSchemeHttps ||
+     accountLinksBaseUrl.IsLoopback))
+{
+    throw new InvalidOperationException(
+        "Production requires AccountLinks:BaseUrl to be a non-loopback HTTPS frontend URL.");
+}
+
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddRateLimiter(options =>
@@ -24,6 +33,15 @@ builder.Services.AddRateLimiter(options =>
         RateLimitPartition.GetFixedWindowLimiter(
             context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    options.AddPolicy("authentication", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>

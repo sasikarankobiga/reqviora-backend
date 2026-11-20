@@ -10,6 +10,12 @@ All project-content endpoints require `Authorization: Bearer <access-token>` and
 | POST | `/api/auth/login` | `{ "email", "password" }` | `200 AuthResponseDto` |
 | POST | `/api/auth/refresh` | `{ "refreshToken" }` | `200 AuthResponseDto` |
 | POST | `/api/auth/logout` | `{ "refreshToken" }` | `204` |
+| POST | `/api/account-security/email-verification/request` | none; Bearer required | `202` or `204` if already verified |
+| POST | `/api/account-security/email-verification/confirm` | `{ "token" }` | `204` |
+| POST | `/api/account-security/password/forgot` | `{ "email" }` | `202` for known and unknown accounts |
+| POST | `/api/account-security/password/reset` | `{ "token", "newPassword" }` | `204` |
+| POST | `/api/account-security/email-change/request` | `{ "newEmail" }`; Bearer required | `202` |
+| POST | `/api/account-security/email-change/confirm` | `{ "token" }` | `204` |
 | GET | `/api/users/me` | none | `200 UserProfileDto` |
 | GET/POST | `/api/projects` | `CreateProjectDto` for POST | project list / `201` |
 | GET/PUT | `/api/projects/{projectId}` | `UpdateProjectDto` for PUT | project / `200` |
@@ -92,6 +98,7 @@ An approval requires a passing validation run for the exact current draft versio
 - `Jwt__Audience`
 - `Jwt__AccessTokenMinutes`
 - `Jwt__RefreshTokenDays`
+- `AccountLinks__BaseUrl` (HTTPS frontend origin for account-action links)
 - `Cors__AllowedOrigins__0` and subsequent indexes for browser clients
 
 Swagger is available at `/swagger` in Development. Apply the EF migrations and the matching PostgreSQL `.sql` or SQL Server `.sqlserver.sql` Requirement Review schema before using all endpoints.

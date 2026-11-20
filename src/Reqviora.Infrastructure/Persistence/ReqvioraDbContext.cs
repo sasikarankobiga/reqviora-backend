@@ -18,6 +18,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
     public DbSet<Requirement> Requirements => Set<Requirement>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AccountActionToken> AccountActionTokens => Set<AccountActionToken>();
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Screen> Screens => Set<Screen>();
     public DbSet<User> Users => Set<User>();
@@ -62,6 +63,18 @@ public class ReqvioraDbContext : DbContext
             entity.HasIndex(token => new { token.UserId, token.ExpiresAt });
             entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
             entity.Property(token => token.ReplacedByTokenHash).HasMaxLength(64);
+            entity.HasOne(token => token.User)
+                .WithMany()
+                .HasForeignKey(token => token.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AccountActionToken>(entity =>
+        {
+            entity.HasIndex(token => token.TokenHash).IsUnique();
+            entity.HasIndex(token => new { token.UserId, token.Purpose, token.ExpiresAt });
+            entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
+            entity.Property(token => token.TargetValue).HasMaxLength(320);
             entity.HasOne(token => token.User)
                 .WithMany()
                 .HasForeignKey(token => token.UserId)

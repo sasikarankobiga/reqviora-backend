@@ -18,9 +18,9 @@ public sealed class LoginSecurityService(
 
     public async Task<bool> RequiresOtpAsync(User user, string ipAddress, string deviceId, CancellationToken cancellationToken)
     {
-        if (!user.MfaEnabled || string.IsNullOrWhiteSpace(user.MfaSecretProtected)) return false;
         var admin = (configuration.GetSection("Security:AdminEmails").Get<string[]>() ?? [])
             .Contains(user.Email, StringComparer.OrdinalIgnoreCase);
+        if (!user.MfaEnabled || string.IsNullOrWhiteSpace(user.MfaSecretProtected)) return admin;
         var since = clock.GetUtcNow().AddMinutes(-30);
         var failureTimes = await db.LoginAudits.AsNoTracking()
             .Where(x => x.UserId == user.Id && !x.Succeeded)
