@@ -27,7 +27,9 @@ public sealed class FileStorageService(IOptions<StorageOptions> options) : IFile
             throw new InvalidDataException("File is empty or exceeds the configured size limit.");
         buffer.Position = 0;
         var clean = await ScanAsync(buffer, value, cancellationToken);
-        if (!clean && value.RequireAntivirus)
+        // A positive malware result is always fatal. RequireAntivirus controls only
+        // whether an unavailable scanner may be bypassed outside production.
+        if (!clean)
             throw new InvalidDataException("File was rejected by antivirus scanning.");
         buffer.Position = 0;
         await using (var file = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,

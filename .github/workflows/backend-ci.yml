@@ -44,9 +44,19 @@ jobs:
         env:
           REQVIORA_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=reqviora_ci_postgres
           REQVIORA_TEST_SQLSERVER: Server=127.0.0.1,1433;Database=master;User ID=sa;Password=ReqvioraCi_SQL_2026!;TrustServerCertificate=True
+      - name: Verify requirement review stores
+        shell: bash
+        env:
+          REQVIORA_REVIEW_PG: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=reqviora_ci_postgres
+          REQVIORA_REVIEW_SQLSERVER: Server=127.0.0.1,1433;Database=master;User ID=sa;Password=ReqvioraCi_SQL_2026!;TrustServerCertificate=True
+        run: |
+          dotnet run --configuration Release --project tests/Reqviora.Review.PgSmokeTests
+          dotnet run --configuration Release --project tests/Reqviora.Review.SqlServerSmokeTests
       - name: Run contract suites
         shell: bash
         run: |
           for suite in InputPipeline.ContractTests Blueprint.SchemaTests Blueprint.ContractTests Day03.ContractTests RequirementReview.Tests Review.ApiContracts.Tests; do
             dotnet run --configuration Release --project "tests/Reqviora.$suite"
           done
+      - name: Verify production container build
+        run: docker build --tag reqviora-backend:ci .

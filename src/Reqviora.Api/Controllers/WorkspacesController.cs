@@ -1,63 +1,141 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Api.Controllers;
 
-[ApiController, Authorize, Route("api/workspaces")]
+[ApiController]
+[Authorize]
+[Route("api/workspaces")]
 public sealed class WorkspacesController(ReqvioraDbContext db) : ControllerBase
 {
-    public sealed record CreateWorkspace(string Name);
-    public sealed record AddMember(Guid UserId, string Role = "Member");
+    public sealed record CreateWorkspaceRequest(string Name);
+    public sealed record AddWorkspaceMemberRequest(Guid UserId, string Role = "Member");
 
     [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct)
+    [ProducesResponseType<IReadOnlyList<WorkspaceResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<WorkspaceResponse>>> GetAll(CancellationToken cancellationToken)
     {
-        if (!UserId(out var userId)) return Unauthorized();
-        var items = await db.Workspaces.AsNoTracking()
-            .Where(x => x.OwnerUserId == userId || db.WorkspaceMembers.Any(m => m.WorkspaceId == x.Id && m.UserId == userId))
-            .OrderBy(x => x.Name).ToArrayAsync(ct);
-        return Ok(items);
+        var userId = ProjectApiAccess.RequireUserId(User);
+        var workspaces = await db.Workspaces.AsNoTracking()
+            .Where(workspace => workspace.OwnerUserId == userId ||
+                db.WorkspaceMembers.Any(member => member.WorkspaceId == workspace.Id && member.UserId == userId))
+            .OrderBy(workspace => workspace.Name)
+            .Select(workspace => new WorkspaceResponse(
+                workspace.Id,
+                workspace.Name,
+                workspace.OwnerUserId,
+                db.Projects.Count(project => project.WorkspaceId == workspace.Id)))
+            .ToArrayAsync(cancellationToken);
+        return Ok(workspaces);
+    }
+
+    [HttpGet("{workspaceId:guid}")]
+    [ProducesResponseType<WorkspaceResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<WorkspaceResponse>> GetById(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        var userId = ProjectApiAccess.RequireUserId(User);
+        var workspace = await db.Workspaces.AsNoTracking()
+            .Where(item => item.Id == workspaceId && (item.OwnerUserId == userId ||
+                db.WorkspaceMembers.Any(member => member.WorkspaceId == item.Id && member.UserId == userId)))
+            .Select(item => new WorkspaceResponse(
+                item.Id,
+                item.Name,
+                item.OwnerUserId,
+                db.Projects.Count(project => project.WorkspaceId == item.Id)))
+            .SingleOrDefaultAsync(cancellationToken);
+        return workspace is null ? NotFound() : Ok(workspace);
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateWorkspace request, CancellationToken ct)
+    [ProducesResponseType<WorkspaceResponse>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<WorkspaceResponse>> Create(
+        CreateWorkspaceRequest request,
+        CancellationToken cancellationToken)
     {
-        if (!UserId(out var userId)) return Unauthorized();
-        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Length > 150) return ValidationProblem();
-        var workspace = new Workspace { Name = request.Name.Trim(), OwnerUserId = userId, CreatedBy = userId.ToString() };
+        var userId = ProjectApiAccess.RequireUserId(User);
+        var name = request.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 150)
+            return ValidationProblem("Workspace name must contain between 1 and 150 characters.");
+
+        var workspace = new Workspace { Name = name, OwnerUserId = userId, CreatedBy = userId.ToString() };
         db.Workspaces.Add(workspace);
-        db.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = workspace.Id, UserId = userId, Role = "Owner" });
-        await db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(Get), new { id = workspace.Id }, workspace);
+        db.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            WorkspaceId = workspace.Id,
+            UserId = userId,
+            Role = "Owner"
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        var response = new WorkspaceResponse(workspace.Id, workspace.Name, workspace.OwnerUserId, 0);
+        return CreatedAtAction(nameof(GetById), new { workspaceId = workspace.Id }, response);
     }
 
-    [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+    [HttpGet("{workspaceId:guid}/members")]
+    public async Task<IActionResult> GetMembers(Guid workspaceId, CancellationToken cancellationToken)
     {
-        if (!UserId(out var userId)) return Unauthorized();
-        var workspace = await db.Workspaces.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id &&
-            (x.OwnerUserId == userId || db.WorkspaceMembers.Any(m => m.WorkspaceId == id && m.UserId == userId)), ct);
-        if (workspace is null) return NotFound();
-        var members = await db.WorkspaceMembers.AsNoTracking().Where(x => x.WorkspaceId == id).ToArrayAsync(ct);
-        var projects = await db.Projects.AsNoTracking().Where(x => x.WorkspaceId == id).ToArrayAsync(ct);
-        return Ok(new { workspace, members, projects });
+        var userId = ProjectApiAccess.RequireUserId(User);
+        if (!await CanAccessAsync(workspaceId, userId, cancellationToken)) return NotFound();
+        return Ok(await db.WorkspaceMembers.AsNoTracking()
+            .Where(member => member.WorkspaceId == workspaceId)
+            .OrderBy(member => member.JoinedAt)
+            .ToArrayAsync(cancellationToken));
     }
 
-    [HttpPost("{id:guid}/members")]
-    public async Task<IActionResult> Add(Guid id, AddMember request, CancellationToken ct)
+    [HttpPost("{workspaceId:guid}/members")]
+    public async Task<IActionResult> AddMember(
+        Guid workspaceId,
+        AddWorkspaceMemberRequest request,
+        CancellationToken cancellationToken)
     {
-        if (!UserId(out var userId)) return Unauthorized();
-        if (!await db.Workspaces.AnyAsync(x => x.Id == id && x.OwnerUserId == userId, ct)) return NotFound();
-        if (!await db.Users.AnyAsync(x => x.Id == request.UserId, ct)) return ValidationProblem();
-        if (await db.WorkspaceMembers.AnyAsync(x => x.WorkspaceId == id && x.UserId == request.UserId, ct)) return Conflict();
-        db.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = id, UserId = request.UserId, Role = request.Role.Trim() });
-        await db.SaveChangesAsync(ct);
+        var userId = ProjectApiAccess.RequireUserId(User);
+        if (!await IsOwnerAsync(workspaceId, userId, cancellationToken)) return NotFound();
+        var role = request.Role?.Trim();
+        if (role is not ("Admin" or "Member" or "Viewer"))
+            return ValidationProblem("Role must be Admin, Member, or Viewer.");
+        if (!await db.Users.AnyAsync(user => user.Id == request.UserId, cancellationToken))
+            return ValidationProblem("The requested user does not exist.");
+        if (await db.WorkspaceMembers.AnyAsync(member =>
+                member.WorkspaceId == workspaceId && member.UserId == request.UserId, cancellationToken))
+            return Conflict();
+
+        db.WorkspaceMembers.Add(new WorkspaceMember
+        {
+            WorkspaceId = workspaceId,
+            UserId = request.UserId,
+            Role = role
+        });
+        await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
-    private bool UserId(out Guid id) => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"), out id);
+    [HttpDelete("{workspaceId:guid}/members/{memberUserId:guid}")]
+    public async Task<IActionResult> RemoveMember(
+        Guid workspaceId,
+        Guid memberUserId,
+        CancellationToken cancellationToken)
+    {
+        var userId = ProjectApiAccess.RequireUserId(User);
+        if (!await IsOwnerAsync(workspaceId, userId, cancellationToken)) return NotFound();
+        var member = await db.WorkspaceMembers.SingleOrDefaultAsync(item =>
+            item.WorkspaceId == workspaceId && item.UserId == memberUserId && item.Role != "Owner", cancellationToken);
+        if (member is null) return NotFound();
+        db.WorkspaceMembers.Remove(member);
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
+    private Task<bool> IsOwnerAsync(Guid workspaceId, Guid userId, CancellationToken cancellationToken) =>
+        db.Workspaces.AnyAsync(workspace => workspace.Id == workspaceId && workspace.OwnerUserId == userId, cancellationToken);
+
+    private async Task<bool> CanAccessAsync(Guid workspaceId, Guid userId, CancellationToken cancellationToken) =>
+        await IsOwnerAsync(workspaceId, userId, cancellationToken) ||
+        await db.WorkspaceMembers.AnyAsync(member =>
+            member.WorkspaceId == workspaceId && member.UserId == userId, cancellationToken);
 }

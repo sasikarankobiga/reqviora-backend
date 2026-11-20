@@ -26,9 +26,11 @@ public sealed class StorageOptions
 public sealed class AiOptions
 {
     public const string SectionName = "AI";
+    public bool Enabled { get; set; }
     public string Provider { get; set; } = "OpenAICompatible";
     public string Endpoint { get; set; } = "https://api.openai.com/v1/";
     public string ApiKey { get; set; } = "";
     public string Model { get; set; } = "gpt-5-mini";
+    public string TranscriptionModel { get; set; } = "gpt-4o-mini-transcribe";
     public int TimeoutSeconds { get; set; } = 120;
 }

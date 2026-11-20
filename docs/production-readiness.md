@@ -2,7 +2,9 @@
 
 ## Required secrets
 
-Supply `ConnectionStrings__ReqvioraDatabase`, `Jwt__Key`, SMTP credentials, and `AI__ApiKey` through the deployment platform's secret store. Do not place production values in `appsettings.json` or `.env` committed to Git. Set `Database__Provider=SqlServer` when using the checked-in SQL Server migrations; PostgreSQL is the default.
+Supply `ConnectionStrings__ReqvioraDatabase`, `Jwt__Key`, and SMTP credentials through the deployment platform's secret store. Do not place production values in `appsettings.json` or `.env` committed to Git. Set `Database__Provider=SqlServer` when using the checked-in SQL Server migrations; PostgreSQL is the default.
+
+Keep `AI__Enabled=false` while G0-07 provider approval is pending. After explicit approval, supply `AI__ApiKey` from the secret store, set the approved `AI__Endpoint`, `AI__Model`, and `AI__TranscriptionModel`, and then set `AI__Enabled=true`. Keep `Mcp__Enabled=false` unless its read-only scope is separately approved; the implementation exposes no mutating MCP tools.
 
 Set `Security__AdminEmails__0` (and subsequent indexes) for administrator accounts. Each administrator must call `POST /api/security/mfa/provision`, store the one-time recovery codes offline, and confirm the authenticator with `POST /api/security/mfa/verify`. Administrators and suspicious sign-ins require TOTP after enrollment.
 
@@ -20,4 +22,4 @@ Forward structured application logs and security alerts to the production monito
 
 ## Release verification
 
-Run `dotnet test Reqviora.sln --configuration Release`, the contract suites in `.github/workflows/backend-ci.yml`, migration smoke tests against both database engines, an SMTP delivery test, an EICAR antivirus rejection test, an AI job, MFA recovery, an approved-revision export integrity check, and a restore drill before declaring the release production-ready.
+Run `dotnet test Reqviora.sln --configuration Release`, the contract suites and both Requirement Review store smoke tests in `.github/workflows/backend-ci.yml`, migration smoke tests against both database engines, an SMTP delivery test, an EICAR antivirus rejection test, structured extraction, Tamil and English transcription, MFA recovery, an approved-revision export integrity check, and a restore drill before declaring the release production-ready.

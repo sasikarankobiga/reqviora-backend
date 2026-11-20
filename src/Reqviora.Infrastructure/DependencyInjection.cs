@@ -9,6 +9,8 @@ using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.Authentication.Interfaces;
 using Reqviora.Application.Features.Projects.Interfaces;
 using Reqviora.Application.Features.RequirementReview;
+using Reqviora.Application.Features.AIOrchestration;
+using Reqviora.Application.Features.VoiceProcessing;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -94,6 +96,12 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(ai.Endpoint, UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ai.TimeoutSeconds, 10, 600));
         });
+        services.AddScoped<IStructuredAiProvider, StructuredAiProvider>();
+        services.AddHttpClient<IVoiceTranscriber, OpenAiCompatibleVoiceTranscriber>(client =>
+        {
+            client.BaseAddress = new Uri(ai.Endpoint, UriKind.Absolute);
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ai.TimeoutSeconds, 10, 600));
+        });
         services.AddSingleton<AIBackgroundQueue>();
         services.AddSingleton<IAIJobQueue>(sp => sp.GetRequiredService<AIBackgroundQueue>());
         services.AddHostedService(sp => sp.GetRequiredService<AIBackgroundQueue>());
@@ -103,7 +111,9 @@ public static class DependencyInjection
             .AddScoped<IUserRepository, UserRepository>()
             .AddScoped<IProjectRepository, ProjectRepository>()
             .AddScoped<IRequirementReviewAccessPolicy, ProjectOwnerRequirementReviewAccessPolicy>()
-            .AddScoped<IRequirementReviewStore>(_ => new PostgresRequirementReviewStore(connectionString))
+            .AddScoped<IRequirementReviewStore>(_ => databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
+                ? new SqlServerRequirementReviewStore(connectionString)
+                : new PostgresRequirementReviewStore(connectionString))
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ProjectDraftService>()
             .AddScoped<ProjectExportService>()

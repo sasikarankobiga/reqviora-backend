@@ -56,6 +56,10 @@ await using var connection =
 
 await connection.OpenAsync();
 
+var schemaPath = Path.GetFullPath("database/reqviora_review/001_create_review_store.sql");
+await using (var schema = new NpgsqlCommand(await File.ReadAllTextAsync(schemaPath), connection))
+    await schema.ExecuteNonQueryAsync();
+
 try
 {
     // Seed one temporary requirement.
