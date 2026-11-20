@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -16,7 +16,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\src\Reqviora.Infrastructure\Reqviora.Infrastructure.csproj" />
+		<ProjectReference Include="../../src/Reqviora.Infrastructure/Reqviora.Infrastructure.csproj" />
+        <ProjectReference Include="../../src/Reqviora.SqlServer.Persistence/Reqviora.SqlServer.Persistence.csproj" />
+        <None Include="../../contracts/examples/blueprint.valid.v1.json" Link="blueprint.valid.v1.json" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>

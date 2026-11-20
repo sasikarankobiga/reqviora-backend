@@ -1,13 +1,23 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
+using Reqviora.Api.Features.RequirementReview;
 using Reqviora.Api.Middleware;
 using Reqviora.Application;
 using Reqviora.Infrastructure;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -45,11 +55,13 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddApplication();
+builder.Services.AddScoped<ReviewApiDecisionBoundary>();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<AuditMiddleware>();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -58,6 +70,7 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseCors("Frontend");
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -70,6 +83,17 @@ if (app.Environment.IsDevelopment())
         options.RoutePrefix = "swagger";
     });
 }
+
+app.MapGet("/", (IHostEnvironment environment) =>
+        environment.IsDevelopment()
+            ? Results.Redirect("/swagger")
+            : Results.Ok(new
+            {
+                name = "REQVIORA API",
+                status = "running",
+                health = "/health/live"
+            }))
+    .ExcludeFromDescription();
 
 app.MapControllers();
 app.MapHealthChecks("/health/live", new HealthCheckOptions
