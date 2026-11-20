@@ -1,28 +1,53 @@
 using System.Security.Claims;
+using Reqviora.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Reqviora.Domain.Entities;
+using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Api.Controllers;
 
-[ApiController, Authorize, Route("api/workspaces")]
+[ApiController]
+[Authorize]
+[Route("api/workspaces")]
 public sealed class WorkspacesController(ReqvioraDbContext db) : ControllerBase
 {
-    public sealed record CreateWorkspace(string Name);
-    public sealed record AddMember(Guid UserId, string Role = "Member");
-
     [HttpGet]
-    public async Task<IActionResult> List(CancellationToken ct)
+    [ProducesResponseType<IReadOnlyList<WorkspaceResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<WorkspaceResponse>>> GetAll(CancellationToken cancellationToken)
     {
-        if (!UserId(out var userId)) return Unauthorized();
-        var items = await db.Workspaces.AsNoTracking()
-            .Where(x => x.OwnerUserId == userId || db.WorkspaceMembers.Any(m => m.WorkspaceId == x.Id && m.UserId == userId))
-            .OrderBy(x => x.Name).ToArrayAsync(ct);
-        return Ok(items);
+        var userId = ProjectApiAccess.RequireUserId(User);
+        var workspaces = await db.Workspaces.AsNoTracking()
+            .Where(workspace => workspace.OwnerUserId == userId || db.WorkspaceMembers.Any(member => member.WorkspaceId == workspace.Id && member.UserId == userId))
+            .OrderBy(workspace => workspace.Name)
+            .Select(workspace => new WorkspaceResponse(
+                workspace.Id,
+                workspace.Name,
+                workspace.OwnerUserId,
+                db.Projects.Count(project => project.WorkspaceId == workspace.Id)))
+            .ToArrayAsync(cancellationToken);
+        return Ok(workspaces);
     }
 
+    [HttpGet("{workspaceId:guid}")]
+    [ProducesResponseType<WorkspaceResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<WorkspaceResponse>> GetById(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        var userId = ProjectApiAccess.RequireUserId(User);
+        var workspace = await db.Workspaces.AsNoTracking()
+            .Where(item => item.Id == workspaceId && (item.OwnerUserId == userId || db.WorkspaceMembers.Any(member => member.WorkspaceId == workspaceId && member.UserId == userId)))
+            .Select(item => new WorkspaceResponse(
+                item.Id,
+                item.Name,
+                item.OwnerUserId,
+                db.Projects.Count(project => project.WorkspaceId == item.Id)))
+            .SingleOrDefaultAsync(cancellationToken);
+        return workspace is null ? NotFound() : Ok(workspace);
+    }
     [HttpPost]
     public async Task<IActionResult> Create(CreateWorkspace request, CancellationToken ct)
     {
@@ -32,11 +57,11 @@ public sealed class WorkspacesController(ReqvioraDbContext db) : ControllerBase
         db.Workspaces.Add(workspace);
         db.WorkspaceMembers.Add(new WorkspaceMember { WorkspaceId = workspace.Id, UserId = userId, Role = "Owner" });
         await db.SaveChangesAsync(ct);
-        return CreatedAtAction(nameof(Get), new { id = workspace.Id }, workspace);
+        return CreatedAtAction(nameof(GetById), new { workspaceId = workspace.Id }, workspace);
     }
 
-    [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken ct)
+    [HttpGet("{id:guid}/details")]
+    public async Task<IActionResult> GetDetails(Guid id, CancellationToken ct)
     {
         if (!UserId(out var userId)) return Unauthorized();
         var workspace = await db.Workspaces.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id &&
@@ -59,5 +84,7 @@ public sealed class WorkspacesController(ReqvioraDbContext db) : ControllerBase
         return NoContent();
     }
 
+
     private bool UserId(out Guid id) => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub"), out id);
+
 }

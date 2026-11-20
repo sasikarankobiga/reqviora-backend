@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Reqviora.Api.Middleware;
@@ -13,13 +14,27 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         }
         catch (Exception exception)
         {
-            logger.LogError(exception, "Unhandled request failure");
-            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+            var (status, title) = exception switch
+            {
+                DbUpdateConcurrencyException => (HttpStatusCode.Conflict, "The resource changed. Reload and retry."),
+                UnauthorizedAccessException => (HttpStatusCode.Forbidden, "Project access is denied."),
+                KeyNotFoundException => (HttpStatusCode.NotFound, "The requested resource was not found."),
+                ArgumentException => (HttpStatusCode.BadRequest, "The request content is invalid."),
+                InvalidOperationException => (HttpStatusCode.Conflict, "The requested workflow transition is not allowed."),
+                _ => (HttpStatusCode.InternalServerError, "An unexpected error occurred.")
+            };
+
+            if (status == HttpStatusCode.InternalServerError)
+                logger.LogError(exception, "Unhandled request failure");
+            else
+                logger.LogInformation("Request rejected with {StatusCode}: {Reason}", (int)status, title);
+
+            context.Response.StatusCode = (int)status;
             await context.Response.WriteAsJsonAsync(new ProblemDetails
             {
-                Status = StatusCodes.Status500InternalServerError,
-                Title = "An unexpected error occurred.",
-                Type = "https://httpstatuses.com/500",
+                Status = (int)status,
+                Title = title,
+                Type = $"https://httpstatuses.com/{(int)status}",
                 Instance = context.Request.Path
             });
         }
