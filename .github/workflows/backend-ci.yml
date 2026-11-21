@@ -40,6 +40,16 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+      - name: Select PostgreSQL 16 client tools
+        shell: bash
+        run: |
+          postgres_bin=/usr/lib/postgresql/16/bin
+          for tool in pg_dump pg_restore psql createdb dropdb; do
+            test -x "${postgres_bin}/${tool}"
+          done
+          echo "${postgres_bin}" >> "${GITHUB_PATH}"
+          "${postgres_bin}/pg_dump" --version
+          "${postgres_bin}/pg_restore" --version
       - run: dotnet test Reqviora.sln --configuration Release
         env:
           REQVIORA_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=reqviora_ci_postgres
