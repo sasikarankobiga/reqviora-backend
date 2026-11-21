@@ -52,6 +52,15 @@ jobs:
         run: |
           dotnet run --configuration Release --project tests/Reqviora.Review.PgSmokeTests
           dotnet run --configuration Release --project tests/Reqviora.Review.SqlServerSmokeTests
+      - name: Verify PostgreSQL backup and isolated restore
+        shell: bash
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: reqviora_ci_postgres
+          PGDATABASE: postgres
+        run: .github/scripts/postgres-backup-restore-drill.sh
       - name: Run contract suites
         shell: bash
         run: |

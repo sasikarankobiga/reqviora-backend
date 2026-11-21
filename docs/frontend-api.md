@@ -112,10 +112,10 @@ Swagger is available at `/swagger` in Development. Apply the EF migrations and t
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/api/projects/{projectId}/input-intelligence/requirements/extract` | Generate evidence-bound requirement candidates; human review is still mandatory |
+| POST | `/api/projects/{projectId}/input-intelligence/requirements/extract` | Generate evidence-bound requirement candidates; body must include `consentGranted: true` and human review is still mandatory |
 | POST | `/api/projects/{projectId}/input-intelligence/voice/transcribe` | Transcribe consented Tamil or English multipart audio |
 | GET | `/api/mcp/v1/catalog` | Feature-gated read-only tools, resources and prompt catalog |
 | POST | `/api/mcp/v1/tools/call` | Invoke an allow-listed owner-scoped read-only tool |
 | GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
 
-Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool.
+Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool.

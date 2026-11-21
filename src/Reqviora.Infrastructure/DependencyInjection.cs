@@ -44,10 +44,17 @@ public static class DependencyInjection
                     npgsql.MigrationsAssembly(typeof(ReqvioraDbContext).Assembly.FullName));
         });
 
-        services.AddHealthChecks()
+        var healthChecks = services.AddHealthChecks()
             .AddDbContextCheck<ReqvioraDbContext>(
                 name: databaseProvider,
                 tags: ["ready"]);
+
+        var smtp = configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>() ?? new SmtpOptions();
+        if (!string.IsNullOrWhiteSpace(smtp.Host))
+            healthChecks.AddCheck("smtp", new TcpEndpointHealthCheck(smtp.Host, smtp.Port), tags: ["ready"]);
+        var storage = configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
+        if (storage.RequireAntivirus)
+            healthChecks.AddCheck("antivirus", new TcpEndpointHealthCheck(storage.ClamAvHost, storage.ClamAvPort), tags: ["ready"]);
 
         var jwtSection = configuration.GetSection(JwtOptions.SectionName);
         var jwtOptions = jwtSection.Get<JwtOptions>()

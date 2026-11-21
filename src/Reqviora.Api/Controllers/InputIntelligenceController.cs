@@ -18,7 +18,8 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
     public sealed record ExtractRequirementsRequest(
         string LanguageCode,
         string InputText,
-        IReadOnlyList<SourceEvidenceRef> Evidence);
+        IReadOnlyList<SourceEvidenceRef> Evidence,
+        bool ConsentGranted);
 
     public sealed class TranscribeRequest
     {
@@ -46,6 +47,8 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
         var request = new AiProviderRequest(
             projectId, Guid.NewGuid(), AiOperation.RequirementExtraction, body.LanguageCode, body.InputText);
         AiContractValidator.Validate(request);
+        if (!body.ConsentGranted)
+            throw new ArgumentException("AI text extraction consent is required.", nameof(body));
         if (!options.Value.Enabled)
             return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         var response = await provider.ExecuteAsync(request, cancellationToken);

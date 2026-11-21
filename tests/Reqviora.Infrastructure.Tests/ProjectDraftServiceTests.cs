@@ -74,6 +74,35 @@ public sealed class ProjectDraftServiceTests
 
     [Theory]
     [MemberData(nameof(Providers))]
+    public async Task Generic_draft_save_preserves_the_current_blueprint(string provider)
+    {
+        await using var database = await PersistenceDatabase.CreateAsync(provider);
+        await using var db = database.Open();
+        var (owner, project) = await SeedProjectAsync(db);
+        var service = new ProjectDraftService(db);
+        var blueprint = await LoadBlueprintAsync(project.Id);
+
+        var designed = await service.SaveDesignAsync(
+            project.Id, owner.Id, """{"step":"blueprint"}""", blueprint, null);
+        var saved = await service.SaveAsync(
+            project.Id, owner.Id, """{"step":"notes"}""", designed.ConcurrencyToken);
+
+        var versions = await db.DesignDraftVersions.AsNoTracking()
+            .Where(version => version.ProjectId == project.Id)
+            .OrderBy(version => version.Version)
+            .ToArrayAsync();
+        Assert.Equal(2, versions.Length);
+        Assert.NotNull(versions[0].BlueprintJson);
+        Assert.Equal(versions[0].BlueprintJson, versions[1].BlueprintJson);
+        Assert.Equal(blueprint.BlueprintId,
+            JsonSerializer.Deserialize<BlueprintDocument>(versions[1].BlueprintJson!,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))!.BlueprintId);
+        Assert.Equal(2, saved.Version);
+        Assert.Equal(blueprint.Requirements.Count * 2, await db.DraftRequirements.CountAsync());
+    }
+
+    [Theory]
+    [MemberData(nameof(Providers))]
     public async Task Approval_is_bound_to_current_validation_and_exports_the_frozen_graph(string provider)
     {
         await using var database = await PersistenceDatabase.CreateAsync(provider);
@@ -201,6 +230,29 @@ public sealed class ProjectDraftServiceTests
         Assert.Contains("[RowVersion] rowversion NOT NULL", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("TR_ApprovedRevisions_Immutable", sql);
         Assert.Contains("TR_DesignDraftVersions_Immutable", sql);
+        Assert.False(db.Database.HasPendingModelChanges());
+    }
+
+    [Fact]
+    public void PostgreSql_migrations_keep_backend_tables_private_for_supabase()
+    {
+        using var db = new ReqvioraDbContext(
+            new DbContextOptionsBuilder<ReqvioraDbContext>()
+                .UseNpgsql("Host=127.0.0.1;Port=1;Database=ReqvioraDesignTime;Username=unused;Password=unused")
+                .Options);
+        var sql = db.GetService<IMigrator>().GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
+        foreach (var table in new[]
+        {
+            "Users", "Projects", "ProjectMembers", "ProjectDrafts", "DesignDraftVersions",
+            "ApprovedRevisions", "ExportRecords", "AuditEvents", "LoginAudits", "AccountActionTokens"
+        })
+        {
+            Assert.Contains($"'{table}'", sql, StringComparison.Ordinal);
+        }
+        Assert.Contains("ENABLE ROW LEVEL SECURITY", sql, StringComparison.Ordinal);
+        Assert.Contains("REVOKE ALL ON TABLE", sql, StringComparison.Ordinal);
+        Assert.Contains("'anon', 'authenticated', 'service_role'", sql, StringComparison.Ordinal);
+        Assert.Contains("ALTER DEFAULT PRIVILEGES", sql, StringComparison.Ordinal);
         Assert.False(db.Database.HasPendingModelChanges());
     }
 

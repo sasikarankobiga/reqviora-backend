@@ -148,6 +148,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
     {
         await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
         RequireDraftJson(draftJson);
+        var blueprintForVersion = blueprint;
         var blueprintJson = blueprint is null ? null : JsonSerializer.Serialize(blueprint, DraftBlueprint.Json);
         if (blueprintJson?.Length > 2_000_000)
             throw new ArgumentException("Blueprint JSON exceeds the supported size.", nameof(blueprint));
@@ -166,12 +167,21 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
         {
             RequireToken(draft, expectedToken);
             EnsureOpen(draft);
+            if (blueprint is null)
+            {
+                var currentVersion = await GetCurrentVersionAsync(draft, cancellationToken);
+                blueprintJson = currentVersion.BlueprintJson;
+                blueprintForVersion = blueprintJson is null
+                    ? null
+                    : JsonSerializer.Deserialize<BlueprintDocument>(blueprintJson, DraftBlueprint.Json)
+                        ?? throw new InvalidDataException("The current Blueprint could not be restored.");
+            }
             draft.Version = checked(draft.Version + 1);
         }
 
         draft.DraftJson = draftJson;
         RotateToken(draft);
-        AddDraftVersion(draft, blueprint, blueprintJson);
+        AddDraftVersion(draft, blueprintForVersion, blueprintJson);
         await PersistDraftAsync(cancellationToken);
         return draft;
     }
