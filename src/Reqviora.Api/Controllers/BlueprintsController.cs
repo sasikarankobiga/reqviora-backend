@@ -19,7 +19,7 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
         Guid projectId,
         CancellationToken cancellationToken)
     {
-        await RequireOwnerAsync(projectId, cancellationToken);
+        await RequireReadAsync(projectId, cancellationToken);
         var version = await ProjectApiAccess.FindCurrentVersionAsync(db, projectId, cancellationToken);
         return version?.BlueprintJson is null ? NotFound() : Ok(ProjectApiAccess.ToResponse(version));
     }
@@ -81,7 +81,7 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
         Guid validationId,
         CancellationToken cancellationToken)
     {
-        await RequireOwnerAsync(projectId, cancellationToken);
+        await RequireReadAsync(projectId, cancellationToken);
         var validation = await db.ValidationRuns.AsNoTracking()
             .Include(run => run.Findings)
             .Join(
@@ -109,7 +109,7 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
         Guid projectId,
         CancellationToken cancellationToken)
     {
-        await RequireOwnerAsync(projectId, cancellationToken);
+        await RequireReadAsync(projectId, cancellationToken);
         var revisions = await db.ApprovedRevisions.AsNoTracking()
             .Where(revision => revision.ProjectId == projectId)
             .ToArrayAsync(cancellationToken);
@@ -125,7 +125,7 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
         Guid revisionId,
         CancellationToken cancellationToken)
     {
-        await RequireOwnerAsync(projectId, cancellationToken);
+        await RequireReadAsync(projectId, cancellationToken);
         var revision = await db.ApprovedRevisions.AsNoTracking().SingleOrDefaultAsync(
             item => item.Id == revisionId && item.ProjectId == projectId,
             cancellationToken);
@@ -134,6 +134,6 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
 
     private Guid UserId => ProjectApiAccess.RequireUserId(User);
 
-    private Task RequireOwnerAsync(Guid projectId, CancellationToken cancellationToken) =>
-        ProjectApiAccess.RequireOwnerAsync(db, projectId, UserId, cancellationToken);
+    private Task RequireReadAsync(Guid projectId, CancellationToken cancellationToken) =>
+        ProjectApiAccess.RequireReadAsync(db, projectId, UserId, cancellationToken);
 }

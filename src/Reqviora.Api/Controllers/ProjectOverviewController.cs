@@ -18,7 +18,7 @@ public sealed class ProjectOverviewController(ReqvioraDbContext db) : Controller
         CancellationToken cancellationToken)
     {
         var userId = ProjectApiAccess.RequireUserId(User);
-        await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
+        await ProjectApiAccess.RequireReadAsync(db, projectId, userId, cancellationToken);
         var project = await db.Projects.AsNoTracking().SingleAsync(
             item => item.Id == projectId,
             cancellationToken);

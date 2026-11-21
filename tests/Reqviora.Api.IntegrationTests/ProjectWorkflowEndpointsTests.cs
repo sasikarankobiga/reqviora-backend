@@ -80,6 +80,46 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Owner_can_assign_viewer_and_editor_permissions()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var viewer = CreateClient(_factory.OtherUser);
+
+        using var addViewer = await owner.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/members/{_factory.OtherUser.Id}",
+            new { role = "viewer" });
+        Assert.Equal(HttpStatusCode.OK, addViewer.StatusCode);
+
+        using var project = await viewer.GetAsync($"/api/projects/{_factory.Project.Id}");
+        Assert.Equal(HttpStatusCode.OK, project.StatusCode);
+        using var overview = await viewer.GetAsync($"/api/projects/{_factory.Project.Id}/overview");
+        Assert.Equal(HttpStatusCode.OK, overview.StatusCode);
+        using var viewerWrite = await viewer.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/drafts/current",
+            new { draft = new { step = "viewer" }, expectedConcurrencyToken = (Guid?)null });
+        Assert.Equal(HttpStatusCode.Forbidden, viewerWrite.StatusCode);
+        using var viewerMetadataWrite = await viewer.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}",
+            new { name = "Blocked", description = "Blocked" });
+        Assert.Equal(HttpStatusCode.NotFound, viewerMetadataWrite.StatusCode);
+
+        using var promote = await owner.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/members/{_factory.OtherUser.Id}",
+            new { role = "EDITOR" });
+        Assert.Equal(HttpStatusCode.OK, promote.StatusCode);
+        using var editorWrite = await viewer.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/drafts/current",
+            new { draft = new { step = "editor" }, expectedConcurrencyToken = (Guid?)null });
+        Assert.Equal(HttpStatusCode.OK, editorWrite.StatusCode);
+
+        using var remove = await owner.DeleteAsync(
+            $"/api/projects/{_factory.Project.Id}/members/{_factory.OtherUser.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, remove.StatusCode);
+        using var deniedAgain = await viewer.GetAsync($"/api/projects/{_factory.Project.Id}/overview");
+        Assert.Equal(HttpStatusCode.Forbidden, deniedAgain.StatusCode);
+    }
+
+    [Fact]
     public async Task Draft_body_is_required()
     {
         using var client = CreateClient(_factory.Owner);
@@ -103,6 +143,24 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 
         using var mcp = await client.GetAsync("/api/mcp/v1/catalog");
         Assert.Equal(HttpStatusCode.NotFound, mcp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Voice_transcription_requires_explicit_consent_before_provider_availability()
+    {
+        using var client = CreateClient(_factory.Owner);
+        using var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([0x52, 0x49, 0x46, 0x46]), "audio", "voice.wav" },
+            { new StringContent("en"), "languageCode" },
+            { new StringContent("5"), "durationSeconds" },
+            { new StringContent("false"), "consentGranted" }
+        };
+        form.First().Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+
+        using var response = await client.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/voice/transcribe", form);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -138,7 +196,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var foreign = await other.PostAsync(
             $"/api/projects/{_factory.Project.Id}/documents",
             foreignForm);
-        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, foreign.StatusCode);
         Assert.Equal(1, _factory.Storage.Saves);
     }
 

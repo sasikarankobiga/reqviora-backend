@@ -1,6 +1,6 @@
 # REQVIORA frontend API guide
 
-All project-content endpoints require `Authorization: Bearer <access-token>` and are restricted to the authenticated project owner. JSON errors use ASP.NET `ProblemDetails`. A missing or invalid token returns `401`; cross-project access returns `403`; missing content returns `404`; and stale draft tokens return `409`.
+All project-content endpoints require `Authorization: Bearer <access-token>`. Owners have full access, Editors may read and edit workflow content, and Viewers have read-only access. Approval, export creation, metadata updates, and member administration remain owner-only. JSON errors use ASP.NET `ProblemDetails`. A missing or invalid token returns `401`; unauthorized project access returns `403`; missing content returns `404`; and stale draft tokens return `409`.
 
 ## Authentication and projects
 
@@ -19,11 +19,16 @@ All project-content endpoints require `Authorization: Bearer <access-token>` and
 | GET | `/api/users/me` | none | `200 UserProfileDto` |
 | GET/POST | `/api/projects` | `CreateProjectDto` for POST | project list / `201` |
 | GET/PUT | `/api/projects/{projectId}` | `UpdateProjectDto` for PUT | project / `200` |
+| GET | `/api/projects/{projectId}/members` | none | owner/member roster |
+| PUT | `/api/projects/{projectId}/members/{userId}` | `{ "role": "Viewer" | "Editor" }` | add/update member |
+| DELETE | `/api/projects/{projectId}/members/{userId}` | none | `204` |
 | GET | `/api/projects/{projectId}/overview` | none | project workflow counts and current token |
 | GET | `/api/workspaces` | none | owned workspaces |
 | GET | `/api/workspaces/{workspaceId}` | none | owned workspace |
 
 Registration passwords must contain 8–128 characters.
+
+Project create and update use the same nine frontend fields: `name`, `description`, `industry`, `targetAudience`, `projectType`, `primaryPlatform`, `technologyPreferences`, `constraints`, and `integrations`. The owner identity is always taken from the access token and is never writable from the request body.
 
 ## Draft and Blueprint workflow
 
