@@ -58,6 +58,7 @@ public sealed class ProjectService(
         var project = await projects.GetByIdAsync(
             projectId,
             ownerId,
+            requireOwner: true,
             trackChanges: true,
             cancellationToken: cancellationToken);
         if (project is null)
@@ -65,6 +66,13 @@ public sealed class ProjectService(
 
         project.Name = request.Name.Trim();
         project.Description = request.Description.Trim();
+        project.Industry = request.Industry.Trim();
+        project.TargetAudience = request.TargetAudience.Trim();
+        project.ProjectType = request.ProjectType.Trim();
+        project.PrimaryPlatform = request.PrimaryPlatform.Trim().ToLowerInvariant();
+        project.TechnologyPreferences = request.TechnologyPreferences.Trim();
+        project.Constraints = request.Constraints.Trim();
+        project.Integrations = request.Integrations.Trim();
         project.LastModifiedAt = timeProvider.GetUtcNow();
         project.LastModifiedBy = ownerId.ToString();
         await unitOfWork.SaveChangesAsync(cancellationToken);

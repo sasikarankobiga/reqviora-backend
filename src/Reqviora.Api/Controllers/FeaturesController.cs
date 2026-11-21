@@ -38,7 +38,7 @@ public sealed class FeaturesController(ReqvioraDbContext db) : ControllerBase
         CancellationToken cancellationToken)
     {
         var userId = ProjectApiAccess.RequireUserId(User);
-        await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
+        await ProjectApiAccess.RequireReadAsync(db, projectId, userId, cancellationToken);
         var version = await ProjectApiAccess.FindCurrentVersionAsync(db, projectId, cancellationToken);
         return ProjectApiAccess.ReadBlueprint(version?.BlueprintJson);
     }

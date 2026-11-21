@@ -123,6 +123,13 @@ public sealed class ProjectDraftServiceTests
         using (var archive = new ZipArchive(new MemoryStream(export.Archive), ZipArchiveMode.Read))
         {
             Assert.Equal(20, archive.Entries.Count);
+            var manifest = JsonSerializer.Deserialize<SecondBrainManifest>(export.ManifestJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            Assert.Equal(19, manifest.ReferenceCount);
+            Assert.Equal(19, manifest.Files.Count);
+            Assert.Equal(19, manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal).Count());
+            Assert.All(manifest.Files, file =>
+                Assert.NotNull(archive.GetEntry(file.Path)));
             using var tokens = new StreamReader(archive.GetEntry("design-tokens.md")!.Open());
             Assert.Contains("Primary blue", await tokens.ReadToEndAsync());
             using var json = JsonDocument.Parse(archive.GetEntry("project.json")!.Open());

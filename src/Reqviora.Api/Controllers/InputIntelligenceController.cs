@@ -41,13 +41,13 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
         [FromServices] IStructuredAiProvider provider,
         CancellationToken cancellationToken)
     {
-        if (!options.Value.Enabled)
-            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         var userId = ProjectApiAccess.RequireUserId(User);
-        await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
+        await ProjectApiAccess.RequireWriteAsync(db, projectId, userId, cancellationToken);
         var request = new AiProviderRequest(
             projectId, Guid.NewGuid(), AiOperation.RequirementExtraction, body.LanguageCode, body.InputText);
         AiContractValidator.Validate(request);
+        if (!options.Value.Enabled)
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         var response = await provider.ExecuteAsync(request, cancellationToken);
         if (response.Status != AiRunStatus.Completed)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { response.ErrorCode });
@@ -63,10 +63,8 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
         [FromServices] IVoiceTranscriber transcriber,
         CancellationToken cancellationToken)
     {
-        if (!options.Value.Enabled)
-            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         var userId = ProjectApiAccess.RequireUserId(User);
-        await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
+        await ProjectApiAccess.RequireWriteAsync(db, projectId, userId, cancellationToken);
         var request = new VoiceInputRequest(
             projectId,
             Guid.NewGuid(),
@@ -76,6 +74,8 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
             body.DurationSeconds,
             body.ConsentGranted);
         InputStudioContractValidator.Validate(request);
+        if (!options.Value.Enabled)
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
         await using var stream = body.Audio.OpenReadStream();
         return Ok(await transcriber.TranscribeAsync(request, stream, cancellationToken));
     }

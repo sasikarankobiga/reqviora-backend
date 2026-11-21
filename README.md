@@ -124,11 +124,14 @@ Email verification, password reset, and email-change tokens are random, stored o
 ### Project endpoints
 
 - `POST /api/projects` - create a project for the authenticated user
-- `GET /api/projects` - list only the authenticated user's projects
-- `GET /api/projects/{id}` - read an owned project
-- `PUT /api/projects/{id}` - update an owned project's name and description
+- `GET /api/projects` - list projects owned by or shared with the authenticated user
+- `GET /api/projects/{id}` - read an owned or shared project
+- `PUT /api/projects/{id}` - update all nine project fields (owner only)
+- `GET /api/projects/{id}/members` - list the owner and project members
+- `PUT /api/projects/{id}/members/{userId}` - add/update a `Viewer` or `Editor` (owner only)
+- `DELETE /api/projects/{id}/members/{userId}` - remove a member (owner only)
 
-All project endpoints require `Authorization: Bearer <access-token>`. A ready-to-run request collection is available at `docs/api/projects.http`.
+All project endpoints require `Authorization: Bearer <access-token>`. Viewers can read shared project content; Editors can also save drafts, validate, review requirements, upload documents, and invoke input intelligence. Approval, export creation, project metadata updates, and member administration remain owner-only. A ready-to-run request collection is available at `docs/api/projects.http`.
 
 ### Requirement review
 

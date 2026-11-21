@@ -7,6 +7,7 @@ using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.Documents;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
+using Reqviora.Api.Features.ProjectWorkflow;
 
 namespace Reqviora.Api.Controllers;
 
@@ -40,8 +41,7 @@ public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorag
             return Unauthorized();
         }
 
-        if (!await db.Projects.AnyAsync(x => x.Id == projectId && x.OwnerId == actor, ct))
-            return NotFound();
+        await ProjectApiAccess.RequireWriteAsync(db, projectId, actor, ct);
 
         var safeName = Path.GetFileName(file.FileName);
         var document = new ProjectDocument

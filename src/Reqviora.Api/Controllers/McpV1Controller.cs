@@ -41,7 +41,7 @@ public sealed class McpV1Controller(ReqvioraDbContext db, IConfiguration configu
     {
         if (!Enabled()) return NotFound();
         var userId = ProjectApiAccess.RequireUserId(User);
-        await ProjectApiAccess.RequireOwnerAsync(db, request.ProjectId, userId, cancellationToken);
+        await ProjectApiAccess.RequireReadAsync(db, request.ProjectId, userId, cancellationToken);
         var current = await ProjectApiAccess.FindCurrentVersionAsync(db, request.ProjectId, cancellationToken);
         return request.Name switch
         {

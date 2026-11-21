@@ -27,7 +27,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
 
     public async Task<ProjectDraft?> ResumeAsync(Guid projectId, Guid actorId, CancellationToken cancellationToken = default)
     {
-        await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
+        await ProjectOwnerAccess.RequireReadAsync(db, projectId, actorId, cancellationToken);
         return await db.ProjectDrafts.AsNoTracking()
             .SingleOrDefaultAsync(x => x.ProjectId == projectId, cancellationToken);
     }
@@ -35,7 +35,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
     public async Task<IReadOnlyList<DesignDraftVersion>> GetDraftHistoryAsync(
         Guid projectId, Guid actorId, CancellationToken cancellationToken = default)
     {
-        await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
+        await ProjectOwnerAccess.RequireReadAsync(db, projectId, actorId, cancellationToken);
         return await db.DesignDraftVersions.AsNoTracking().Where(x => x.ProjectId == projectId)
             .OrderByDescending(x => x.Version).ToArrayAsync(cancellationToken);
     }
@@ -43,7 +43,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
     public async Task<IReadOnlyList<ApprovedRevision>> GetRevisionHistoryAsync(
         Guid projectId, Guid actorId, CancellationToken cancellationToken = default)
     {
-        await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
+        await ProjectOwnerAccess.RequireReadAsync(db, projectId, actorId, cancellationToken);
         return await db.ApprovedRevisions.AsNoTracking().Where(x => x.ProjectId == projectId)
             .Join(db.DesignDraftVersions, revision => revision.DraftVersionId, version => version.Id,
                 (revision, version) => new { Revision = revision, version.Version })
@@ -53,7 +53,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
     public async Task<ValidationRun> ValidateAsync(
         Guid projectId, Guid actorId, Guid expectedToken, CancellationToken cancellationToken = default)
     {
-        await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
+        await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
         var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
         EnsureOpen(draft);
         var version = await GetCurrentVersionAsync(draft, cancellationToken);
@@ -121,7 +121,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
     public async Task<ProjectDraft> StartAfterApprovalAsync(
         Guid projectId, Guid actorId, Guid expectedToken, CancellationToken cancellationToken = default)
     {
-        await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
+        await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
         var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
         if (draft.ApprovedRevisionId is not { } revisionId)
             throw new InvalidOperationException("The current draft is open.");
@@ -146,7 +146,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
         Guid projectId, Guid actorId, string draftJson, BlueprintDocument? blueprint, Guid? expectedToken,
         CancellationToken cancellationToken)
     {
-        await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
+        await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
         RequireDraftJson(draftJson);
         var blueprintJson = blueprint is null ? null : JsonSerializer.Serialize(blueprint, DraftBlueprint.Json);
         if (blueprintJson?.Length > 2_000_000)
