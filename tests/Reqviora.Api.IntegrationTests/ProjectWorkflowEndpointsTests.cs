@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Common.Interfaces;
+using Reqviora.Application.Features.Projects.DTOs;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 using Reqviora.Domain.Entities;
@@ -138,7 +139,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 
         using var extraction = await client.PostAsJsonAsync(
             $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
-            new { languageCode = "en", inputText = "test", evidence = Array.Empty<object>() });
+            new { languageCode = "en", inputText = "test", evidence = Array.Empty<object>(), consentGranted = true });
         Assert.Equal(HttpStatusCode.ServiceUnavailable, extraction.StatusCode);
 
         using var mcp = await client.GetAsync("/api/mcp/v1/catalog");
@@ -161,6 +162,69 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var response = await client.PostAsync(
             $"/api/projects/{_factory.Project.Id}/input-intelligence/voice/transcribe", form);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Text_extraction_requires_explicit_consent_and_project_access()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var missingConsent = await owner.PostAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
+            new { languageCode = "en", inputText = "Users need sign in", evidence = Array.Empty<object>(), consentGranted = false });
+        Assert.Equal(HttpStatusCode.BadRequest, missingConsent.StatusCode);
+
+        using var other = CreateClient(_factory.OtherUser);
+        using var foreignProject = await other.PostAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
+            new { languageCode = "en", inputText = "Users need sign in", evidence = Array.Empty<object>(), consentGranted = true });
+        Assert.Equal(HttpStatusCode.Forbidden, foreignProject.StatusCode);
+    }
+
+    [Fact]
+    public async Task Flutter_project_contract_round_trips_all_nine_fields()
+    {
+        using var client = CreateClient(_factory.Owner);
+        using var created = await client.PostAsJsonAsync("/api/projects", new
+        {
+            name = "Mobile Banking",
+            description = "Flutter client",
+            industry = "Finance",
+            targetAudience = "Retail customers",
+            projectType = "Mobile app",
+            primaryPlatform = "MOBILE",
+            technologyPreferences = "Flutter, .NET",
+            constraints = "WCAG AA",
+            integrations = "Open Banking"
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var project = await created.Content.ReadFromJsonAsync<ProjectResponseDto>();
+        Assert.NotNull(project);
+        Assert.Equal("mobile", project.PrimaryPlatform);
+
+        using var updated = await client.PutAsJsonAsync($"/api/projects/{project.Id}", new
+        {
+            name = "Mobile Banking V2",
+            description = "Flutter integration verified",
+            industry = "Fintech",
+            targetAudience = "SME customers",
+            projectType = "Cross-platform app",
+            primaryPlatform = "WEB",
+            technologyPreferences = "Flutter Web, .NET",
+            constraints = "Offline-first",
+            integrations = "Payments"
+        });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var body = await updated.Content.ReadFromJsonAsync<ProjectResponseDto>();
+        Assert.NotNull(body);
+        Assert.Equal(new[]
+        {
+            "Mobile Banking V2", "Flutter integration verified", "Fintech", "SME customers",
+            "Cross-platform app", "web", "Flutter Web, .NET", "Offline-first", "Payments"
+        }, new[]
+        {
+            body.Name, body.Description, body.Industry, body.TargetAudience, body.ProjectType,
+            body.PrimaryPlatform, body.TechnologyPreferences, body.Constraints, body.Integrations
+        });
     }
 
     [Fact]

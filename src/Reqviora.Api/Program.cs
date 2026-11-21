@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.OpenApi;
 using Reqviora.Api.Features.RequirementReview;
+using Reqviora.Api.Configuration;
 using Reqviora.Api.Middleware;
 using Reqviora.Application;
 using Reqviora.Infrastructure;
@@ -8,21 +9,7 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-if (!builder.Environment.IsDevelopment() &&
-    !builder.Configuration.GetValue<bool>("Storage:RequireAntivirus"))
-{
-    throw new InvalidOperationException(
-        "Production requires Storage:RequireAntivirus=true and a reachable antivirus service.");
-}
-
-if (!builder.Environment.IsDevelopment() &&
-    (!Uri.TryCreate(builder.Configuration["AccountLinks:BaseUrl"], UriKind.Absolute, out var accountLinksBaseUrl) ||
-     accountLinksBaseUrl.Scheme != Uri.UriSchemeHttps ||
-     accountLinksBaseUrl.IsLoopback))
-{
-    throw new InvalidOperationException(
-        "Production requires AccountLinks:BaseUrl to be a non-loopback HTTPS frontend URL.");
-}
+ProductionConfigurationValidator.Validate(builder.Configuration, builder.Environment);
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();

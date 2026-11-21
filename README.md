@@ -168,6 +168,7 @@ Supabase. For standalone PostgreSQL, create those roles as `NOLOGIN` roles first
 The provider-independent V1 contracts support a configurable OpenAI-compatible gateway for
 structured candidates and Tamil/English transcription. Provider execution is disabled by
 default (`AI__Enabled=false`) while G0-07 approval remains pending, and AI output never bypasses
-human confirmation. MCP is separately feature-gated (`Mcp__Enabled=false` by default)
+human confirmation. Text extraction and voice transcription require explicit consent before any
+provider call. MCP is separately feature-gated (`Mcp__Enabled=false` by default)
 and limited to authenticated, owner-scoped read-only tools, resources, and prompts.
 Blueprint schema, input pipeline, generation, and review checks run in .NET 10 CI.
