@@ -37,7 +37,7 @@ source_tables="$(${postgres_tools[psql]} --tuples-only --no-align \
   --command="SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema');")"
 
 restore_database="reqviora_restore_drill_${GITHUB_RUN_ID:-local}_${RANDOM}"
-work_directory="$(mktemp -d)"
+work_directory="$(mktemp -d "${RUNNER_TEMP:-/tmp}/reqviora-backup.XXXXXX")"
 dump_file="${work_directory}/reqviora.dump"
 
 cleanup() {

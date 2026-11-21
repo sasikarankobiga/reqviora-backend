@@ -43,15 +43,22 @@ jobs:
       - name: Select PostgreSQL 16 client tools
         shell: bash
         run: |
-          postgres_bin=/usr/lib/postgresql/16/bin
-          if [[ ! -x "${postgres_bin}/pg_dump" ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes --no-install-recommends postgresql-client-16
-          fi
+          postgres_bin="${RUNNER_TEMP}/postgresql-16-client"
+          mkdir -p "${postgres_bin}"
           for tool in pg_dump pg_restore psql createdb dropdb; do
-            test -x "${postgres_bin}/${tool}"
+            cat > "${postgres_bin}/${tool}" <<EOF
+          #!/usr/bin/env bash
+          exec docker run --rm --network host \
+            --env PGHOST --env PGPORT --env PGUSER --env PGPASSWORD --env PGDATABASE \
+            --volume "${RUNNER_TEMP}:${RUNNER_TEMP}" \
+            postgres:16 ${tool} "\$@"
+          EOF
+            chmod +x "${postgres_bin}/${tool}"
           done
           echo "${postgres_bin}" >> "${GITHUB_PATH}"
+          export PATH="${postgres_bin}:${PATH}"
+          command -v pg_dump
+          command -v pg_restore
           "${postgres_bin}/pg_dump" --version
           "${postgres_bin}/pg_restore" --version
       - run: dotnet test Reqviora.sln --configuration Release
