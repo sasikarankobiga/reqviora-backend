@@ -44,6 +44,10 @@ jobs:
         shell: bash
         run: |
           postgres_bin=/usr/lib/postgresql/16/bin
+          if [[ ! -x "${postgres_bin}/pg_dump" ]]; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-client-16
+          fi
           for tool in pg_dump pg_restore psql createdb dropdb; do
             test -x "${postgres_bin}/${tool}"
           done
