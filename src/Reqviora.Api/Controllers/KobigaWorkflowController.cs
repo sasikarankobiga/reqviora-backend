@@ -19,6 +19,7 @@ using Reqviora.Application.Features.WorkflowIntegration;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Reqviora.Api.Controllers;
 
@@ -94,7 +95,15 @@ public sealed class KobigaWorkflowController(
         var proposed = KobigaWorkflowPolicy.StageCandidate(candidate);
         try
         {
-            await InsertCandidateAsync(projectId, proposed, ct);
+
+    var staged = await InsertCandidateAsync(
+    projectId, ActorId, proposed, ct);
+
+     if (!staged)
+    {
+    return ConflictLocked();
+    }
+
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
@@ -104,6 +113,15 @@ public sealed class KobigaWorkflowController(
         {
             return Conflict(new { error = "REQUIREMENT_ALREADY_STAGED" });
         }
+        catch (DbException ex) when (
+    db.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite" &&
+    ex.GetType().FullName == "Microsoft.Data.Sqlite.SqliteException" &&
+    ex.Message.Contains(
+        "UNIQUE constraint failed:",
+        StringComparison.OrdinalIgnoreCase))
+{
+    return Conflict(new { error = "REQUIREMENT_ALREADY_STAGED" });
+}
 
         return CreatedAtAction(nameof(GetReview),
             new { projectId, requirementId = proposed.Id }, proposed);
@@ -214,7 +232,7 @@ public sealed class KobigaWorkflowController(
             projectId, blueprintId, revision, confirmed, body.Features,
             body.Screens, body.Components, body.Actions, body.Navigation);
         var proposed = generator.Generate(request); // Also checks component registry and graph references.
-        var saved = await drafts.SaveDesignAsync(
+        var saved = await drafts.SaveReviewedDesignAsync(
             projectId, ActorId, draft?.DraftJson ?? "{}", proposed,
             body.ExpectedConcurrencyToken, ct);
         return Ok(new BlueprintWorkflowResponse(
@@ -330,39 +348,143 @@ public sealed class KobigaWorkflowController(
                 draft?.ConcurrencyToken, ct);
     }
 
-    private async Task InsertCandidateAsync(
-        Guid projectId, ReviewedRequirement requirement, CancellationToken ct)
+
+
+private async Task<bool> InsertCandidateAsync(
+        Guid projectId,
+        Guid actorId,
+        ReviewedRequirement requirement,
+        CancellationToken ct)
     {
-        // Uses the same database and schema as IRequirementReviewStore.
-        // Apply database/reqviora_review/001_create_review_store.sql[server.sql] first.
+        // EF and raw SQL share one database transaction.
+        await using var transaction =
+            await db.Database.BeginTransactionAsync(ct);
+
         var connection = db.Database.GetDbConnection();
-        var openedHere = connection.State != ConnectionState.Open;
-        if (openedHere) await connection.OpenAsync(ct);
-        try
+
+        // Lock the project before inserting the candidate.
+        // Approval and review decisions must follow the same lock order.
+        var provider = db.Database.ProviderName;
+
+        string? projectLockSql = provider switch
         {
-            await using var command = connection.CreateCommand();
-            var jsonExpr = db.Database.IsSqlServer()
+            "Npgsql.EntityFrameworkCore.PostgreSQL" => """
+                SELECT "Id"
+                FROM "Projects"
+                WHERE "Id" = @project_id
+                FOR UPDATE;
+                """,
+
+            "Microsoft.EntityFrameworkCore.SqlServer" => """
+                SELECT [Id]
+                FROM [Projects] WITH (UPDLOCK, HOLDLOCK)
+                WHERE [Id] = @project_id;
+                """,
+
+            // SQLite is used only by this integration-test setup.
+            // It cannot validate production row-lock behavior.
+            "Microsoft.EntityFrameworkCore.Sqlite" => null,
+
+            _ => throw new NotSupportedException(
+                $"Unsupported database provider: {provider}")
+        };
+
+        if (projectLockSql is not null)
+        {
+            await using var projectLock = connection.CreateCommand();
+
+            projectLock.Transaction = transaction.GetDbTransaction();
+            projectLock.CommandText = projectLockSql;
+
+            AddParameter(projectLock, "@project_id", projectId);
+
+            var lockedProject =
+                await projectLock.ExecuteScalarAsync(ct);
+
+            if (lockedProject is null)
+            {
+                throw new UnauthorizedAccessException(
+                    "Project access is required.");
+            }
+        }
+
+        // Security: Do not stage new requirements while
+        // the current project draft is already approved.
+        // This runs inside the existing transaction,
+        // after acquiring the project lock.
+        var isDraftApproved = await db.ProjectDrafts
+            .AsNoTracking()
+            .AnyAsync(
+                draft => draft.ProjectId == projectId &&
+                         draft.ApprovedRevisionId != null,
+                ct);
+
+        if (isDraftApproved)
+        {
+            await transaction.RollbackAsync(ct);
+            return false;
+        }
+
+
+
+        // Step 1: Save candidate as Suggested.
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction.GetDbTransaction();
+
+            var jsonExpr = db.Database.IsSqlServer() ||
+                db.Database.ProviderName ==
+                    "Microsoft.EntityFrameworkCore.Sqlite"
                 ? "@evidence_json"
                 : "CAST(@evidence_json AS jsonb)";
+
             command.CommandText = $"""
                 INSERT INTO reqviora_review.requirements
-                    (project_id, requirement_id, title, description, status, revision,
+                    (project_id, requirement_id, title,
+                     description, status, revision,
                      evidence_json, confirmed_by, confirmed_at)
-                VALUES (@project_id, @requirement_id, @title, @description, 'Suggested', 1,
-                        {jsonExpr}, NULL, NULL)
+                VALUES
+                    (@project_id, @requirement_id, @title,
+                     @description, 'Suggested', 1,
+                     {jsonExpr}, NULL, NULL)
                 """;
+
             AddParameter(command, "@project_id", projectId);
             AddParameter(command, "@requirement_id", requirement.Id);
             AddParameter(command, "@title", requirement.Title);
             AddParameter(command, "@description", requirement.Description);
-            AddParameter(command, "@evidence_json", JsonSerializer.Serialize(requirement.Evidence));
+
+            AddParameter(
+                command,
+                "@evidence_json",
+                JsonSerializer.Serialize(requirement.Evidence));
+
             await command.ExecuteNonQueryAsync(ct);
         }
-        finally
+
+        // Step 2: Use EF Core for project ownership and marker.
+        var project = await db.Projects.SingleOrDefaultAsync(
+            x => x.Id == projectId && x.OwnerId == actorId,
+            ct);
+
+        if (project is null)
         {
-            if (openedHere) await connection.CloseAsync();
+            throw new UnauthorizedAccessException(
+                "Project owner access is required.");
         }
+
+        project.HasRequirementReviewHistory = true;
+
+        // Save marker inside the same transaction.
+        await db.SaveChangesAsync(ct);
+
+        // Both operations succeed together.
+        await transaction.CommitAsync(ct);
+        return true;
     }
+
+
+
 
     private static void AddParameter(DbCommand command, string name, object value)
     {

@@ -13,11 +13,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Common.Interfaces;
+using Reqviora.Application.Features.Projects.DTOs;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 using Xunit;
+using Reqviora.Application.Features.RequirementReview;
 
 namespace Reqviora.Api.IntegrationTests;
 
@@ -80,6 +82,46 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Owner_can_assign_viewer_and_editor_permissions()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var viewer = CreateClient(_factory.OtherUser);
+
+        using var addViewer = await owner.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/members/{_factory.OtherUser.Id}",
+            new { role = "viewer" });
+        Assert.Equal(HttpStatusCode.OK, addViewer.StatusCode);
+
+        using var project = await viewer.GetAsync($"/api/projects/{_factory.Project.Id}");
+        Assert.Equal(HttpStatusCode.OK, project.StatusCode);
+        using var overview = await viewer.GetAsync($"/api/projects/{_factory.Project.Id}/overview");
+        Assert.Equal(HttpStatusCode.OK, overview.StatusCode);
+        using var viewerWrite = await viewer.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/drafts/current",
+            new { draft = new { step = "viewer" }, expectedConcurrencyToken = (Guid?)null });
+        Assert.Equal(HttpStatusCode.Forbidden, viewerWrite.StatusCode);
+        using var viewerMetadataWrite = await viewer.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}",
+            new { name = "Blocked", description = "Blocked" });
+        Assert.Equal(HttpStatusCode.NotFound, viewerMetadataWrite.StatusCode);
+
+        using var promote = await owner.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/members/{_factory.OtherUser.Id}",
+            new { role = "EDITOR" });
+        Assert.Equal(HttpStatusCode.OK, promote.StatusCode);
+        using var editorWrite = await viewer.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/drafts/current",
+            new { draft = new { step = "editor" }, expectedConcurrencyToken = (Guid?)null });
+        Assert.Equal(HttpStatusCode.OK, editorWrite.StatusCode);
+
+        using var remove = await owner.DeleteAsync(
+            $"/api/projects/{_factory.Project.Id}/members/{_factory.OtherUser.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, remove.StatusCode);
+        using var deniedAgain = await viewer.GetAsync($"/api/projects/{_factory.Project.Id}/overview");
+        Assert.Equal(HttpStatusCode.Forbidden, deniedAgain.StatusCode);
+    }
+
+    [Fact]
     public async Task Draft_body_is_required()
     {
         using var client = CreateClient(_factory.Owner);
@@ -98,11 +140,92 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 
         using var extraction = await client.PostAsJsonAsync(
             $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
-            new { languageCode = "en", inputText = "test", evidence = Array.Empty<object>() });
+            new { languageCode = "en", inputText = "test", evidence = Array.Empty<object>(), consentGranted = true });
         Assert.Equal(HttpStatusCode.ServiceUnavailable, extraction.StatusCode);
 
         using var mcp = await client.GetAsync("/api/mcp/v1/catalog");
         Assert.Equal(HttpStatusCode.NotFound, mcp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Voice_transcription_requires_explicit_consent_before_provider_availability()
+    {
+        using var client = CreateClient(_factory.Owner);
+        using var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([0x52, 0x49, 0x46, 0x46]), "audio", "voice.wav" },
+            { new StringContent("en"), "languageCode" },
+            { new StringContent("5"), "durationSeconds" },
+            { new StringContent("false"), "consentGranted" }
+        };
+        form.First().Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+
+        using var response = await client.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/voice/transcribe", form);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Text_extraction_requires_explicit_consent_and_project_access()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var missingConsent = await owner.PostAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
+            new { languageCode = "en", inputText = "Users need sign in", evidence = Array.Empty<object>(), consentGranted = false });
+        Assert.Equal(HttpStatusCode.BadRequest, missingConsent.StatusCode);
+
+        using var other = CreateClient(_factory.OtherUser);
+        using var foreignProject = await other.PostAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
+            new { languageCode = "en", inputText = "Users need sign in", evidence = Array.Empty<object>(), consentGranted = true });
+        Assert.Equal(HttpStatusCode.Forbidden, foreignProject.StatusCode);
+    }
+
+    [Fact]
+    public async Task Flutter_project_contract_round_trips_all_nine_fields()
+    {
+        using var client = CreateClient(_factory.Owner);
+        using var created = await client.PostAsJsonAsync("/api/projects", new
+        {
+            name = "Mobile Banking",
+            description = "Flutter client",
+            industry = "Finance",
+            targetAudience = "Retail customers",
+            projectType = "Mobile app",
+            primaryPlatform = "MOBILE",
+            technologyPreferences = "Flutter, .NET",
+            constraints = "WCAG AA",
+            integrations = "Open Banking"
+        });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var project = await created.Content.ReadFromJsonAsync<ProjectResponseDto>();
+        Assert.NotNull(project);
+        Assert.Equal("mobile", project.PrimaryPlatform);
+
+        using var updated = await client.PutAsJsonAsync($"/api/projects/{project.Id}", new
+        {
+            name = "Mobile Banking V2",
+            description = "Flutter integration verified",
+            industry = "Fintech",
+            targetAudience = "SME customers",
+            projectType = "Cross-platform app",
+            primaryPlatform = "WEB",
+            technologyPreferences = "Flutter Web, .NET",
+            constraints = "Offline-first",
+            integrations = "Payments"
+        });
+        Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var body = await updated.Content.ReadFromJsonAsync<ProjectResponseDto>();
+        Assert.NotNull(body);
+        Assert.Equal(new[]
+        {
+            "Mobile Banking V2", "Flutter integration verified", "Fintech", "SME customers",
+            "Cross-platform app", "web", "Flutter Web, .NET", "Offline-first", "Payments"
+        }, new[]
+        {
+            body.Name, body.Description, body.Industry, body.TargetAudience, body.ProjectType,
+            body.PrimaryPlatform, body.TechnologyPreferences, body.Constraints, body.Integrations
+        });
     }
 
     [Fact]
@@ -138,7 +261,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var foreign = await other.PostAsync(
             $"/api/projects/{_factory.Project.Id}/documents",
             foreignForm);
-        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, foreign.StatusCode);
         Assert.Equal(1, _factory.Storage.Saves);
     }
 
@@ -372,8 +495,11 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<ReqvioraDbContext>>();
                 services.RemoveAll<ReqvioraDbContext>();
+                services.RemoveAll<IRequirementReviewCatalog>();
                 services.RemoveAll<IFileStorageService>();
                 services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection));
+                services.AddSingleton<IRequirementReviewCatalog>(
+    new EmptyRequirementReviewCatalog());
                 services.AddSingleton<IFileStorageService>(Storage);
             });
         }
@@ -390,10 +516,26 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             Email = email,
             NormalizedEmail = email.ToUpperInvariant(),
             PasswordHash = "not-used-in-tests",
-            DisplayName = email
+            DisplayName = email,
+            EmailVerified = true
         };
 
-        public sealed class TestFileStorage : IFileStorageService
+
+
+private sealed class EmptyRequirementReviewCatalog
+    : IRequirementReviewCatalog
+ {
+            public Task<IReadOnlyList<ReviewedRequirement>>
+                ListByProjectAsync(
+                    Guid projectId,
+                    CancellationToken cancellationToken = default)
+            {
+                IReadOnlyList<ReviewedRequirement> reviews = [];
+
+                return Task.FromResult(reviews);
+            }
+        }
+public sealed class TestFileStorage : IFileStorageService
         {
             public int Saves { get; private set; }
             public bool RejectNext { get; set; }

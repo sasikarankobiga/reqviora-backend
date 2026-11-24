@@ -5,6 +5,7 @@ using Reqviora.Application.Features.SecondBrain;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
+using Reqviora.Infrastructure.Authorization;
 
 namespace Reqviora.Api.Features.ProjectWorkflow;
 
@@ -32,6 +33,14 @@ internal static class ProjectApiAccess
         if (!allowed)
             throw new UnauthorizedAccessException("Project owner access is required.");
     }
+
+    internal static async Task RequireReadAsync(
+        ReqvioraDbContext db, Guid projectId, Guid userId, CancellationToken cancellationToken) =>
+        _ = await ProjectOwnerAccess.RequireReadAsync(db, projectId, userId, cancellationToken);
+
+    internal static async Task RequireWriteAsync(
+        ReqvioraDbContext db, Guid projectId, Guid userId, CancellationToken cancellationToken) =>
+        _ = await ProjectOwnerAccess.RequireWriteAsync(db, projectId, userId, cancellationToken);
 
     internal static async Task<DesignDraftVersion?> FindCurrentVersionAsync(
         ReqvioraDbContext db,

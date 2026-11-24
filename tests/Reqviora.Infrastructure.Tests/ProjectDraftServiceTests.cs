@@ -12,6 +12,7 @@ using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Services;
+using Reqviora.Application.Features.RequirementReview;
 
 namespace Reqviora.Infrastructure.Tests;
 
@@ -33,7 +34,7 @@ public sealed class ProjectDraftServiceTests
         await using var database = await PersistenceDatabase.CreateAsync(provider);
         await using var db = database.Open();
         var (owner, project) = await SeedProjectAsync(db);
-        var service = new ProjectDraftService(db);
+        var service = CreateService(db);
         Assert.Null(await service.ResumeAsync(project.Id, owner.Id));
 
         var original = await service.SaveAsync(project.Id, owner.Id, """{"step":"scope"}""", null);
@@ -46,7 +47,7 @@ public sealed class ProjectDraftServiceTests
         var id = original.Id;
 
         await using var anotherDb = database.Open();
-        var anotherService = new ProjectDraftService(anotherDb);
+        var anotherService = CreateService(anotherDb);
         var resumed = await anotherService.ResumeAsync(project.Id, owner.Id);
         Assert.NotNull(resumed);
         Assert.Equal(id, resumed.Id);
@@ -66,10 +67,39 @@ public sealed class ProjectDraftServiceTests
 
         await using var staleDb = database.Open();
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() =>
-            new ProjectDraftService(staleDb).SaveAsync(project.Id, owner.Id, "{}", originalToken));
+            CreateService(staleDb).SaveAsync(project.Id, owner.Id, "{}", originalToken));
         Assert.Equal(1, await staleDb.ProjectDrafts.CountAsync());
         Assert.Equal(2, await staleDb.DesignDraftVersions.CountAsync());
         Assert.Equal("""{"step":"review"}""", (await anotherService.ResumeAsync(project.Id, owner.Id))!.DraftJson);
+    }
+
+    [Theory]
+    [MemberData(nameof(Providers))]
+    public async Task Generic_draft_save_preserves_the_current_blueprint(string provider)
+    {
+        await using var database = await PersistenceDatabase.CreateAsync(provider);
+        await using var db = database.Open();
+        var (owner, project) = await SeedProjectAsync(db);
+      var service = CreateService(db);
+        var blueprint = await LoadBlueprintAsync(project.Id);
+
+        var designed = await service.SaveDesignAsync(
+            project.Id, owner.Id, """{"step":"blueprint"}""", blueprint, null);
+        var saved = await service.SaveAsync(
+            project.Id, owner.Id, """{"step":"notes"}""", designed.ConcurrencyToken);
+
+        var versions = await db.DesignDraftVersions.AsNoTracking()
+            .Where(version => version.ProjectId == project.Id)
+            .OrderBy(version => version.Version)
+            .ToArrayAsync();
+        Assert.Equal(2, versions.Length);
+        Assert.NotNull(versions[0].BlueprintJson);
+        Assert.Equal(versions[0].BlueprintJson, versions[1].BlueprintJson);
+        Assert.Equal(blueprint.BlueprintId,
+            JsonSerializer.Deserialize<BlueprintDocument>(versions[1].BlueprintJson!,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))!.BlueprintId);
+        Assert.Equal(2, saved.Version);
+        Assert.Equal(blueprint.Requirements.Count * 2, await db.DraftRequirements.CountAsync());
     }
 
     [Theory]
@@ -79,7 +109,7 @@ public sealed class ProjectDraftServiceTests
         await using var database = await PersistenceDatabase.CreateAsync(provider);
         await using var db = database.Open();
         var (owner, project) = await SeedProjectAsync(db);
-        var service = new ProjectDraftService(db);
+        var service = CreateService(db);
         var exports = new ProjectExportService(db);
 
         var broken = await LoadBlueprintAsync(project.Id, breakRoute: true);
@@ -123,6 +153,13 @@ public sealed class ProjectDraftServiceTests
         using (var archive = new ZipArchive(new MemoryStream(export.Archive), ZipArchiveMode.Read))
         {
             Assert.Equal(20, archive.Entries.Count);
+            var manifest = JsonSerializer.Deserialize<SecondBrainManifest>(export.ManifestJson,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            Assert.Equal(19, manifest.ReferenceCount);
+            Assert.Equal(19, manifest.Files.Count);
+            Assert.Equal(19, manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal).Count());
+            Assert.All(manifest.Files, file =>
+                Assert.NotNull(archive.GetEntry(file.Path)));
             using var tokens = new StreamReader(archive.GetEntry("design-tokens.md")!.Open());
             Assert.Contains("Primary blue", await tokens.ReadToEndAsync());
             using var json = JsonDocument.Parse(archive.GetEntry("project.json")!.Open());
@@ -197,6 +234,29 @@ public sealed class ProjectDraftServiceTests
         Assert.False(db.Database.HasPendingModelChanges());
     }
 
+    [Fact]
+    public void PostgreSql_migrations_keep_backend_tables_private_for_supabase()
+    {
+        using var db = new ReqvioraDbContext(
+            new DbContextOptionsBuilder<ReqvioraDbContext>()
+                .UseNpgsql("Host=127.0.0.1;Port=1;Database=ReqvioraDesignTime;Username=unused;Password=unused")
+                .Options);
+        var sql = db.GetService<IMigrator>().GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
+        foreach (var table in new[]
+        {
+            "Users", "Projects", "ProjectMembers", "ProjectDrafts", "DesignDraftVersions",
+            "ApprovedRevisions", "ExportRecords", "AuditEvents", "LoginAudits", "AccountActionTokens"
+        })
+        {
+            Assert.Contains($"'{table}'", sql, StringComparison.Ordinal);
+        }
+        Assert.Contains("ENABLE ROW LEVEL SECURITY", sql, StringComparison.Ordinal);
+        Assert.Contains("REVOKE ALL ON TABLE", sql, StringComparison.Ordinal);
+        Assert.Contains("'anon', 'authenticated', 'service_role'", sql, StringComparison.Ordinal);
+        Assert.Contains("ALTER DEFAULT PRIVILEGES", sql, StringComparison.Ordinal);
+        Assert.False(db.Database.HasPendingModelChanges());
+    }
+
     [Theory]
     [MemberData(nameof(Providers))]
     public async Task Native_provider_migrations_handle_upgrade_and_database_concurrency(string provider)
@@ -222,7 +282,7 @@ public sealed class ProjectDraftServiceTests
         }
 
         var (owner, current) = await SeedProjectAsync(db);
-        var draft = await new ProjectDraftService(db).SaveAsync(current.Id, owner.Id, "{}", null);
+        var draft = await CreateService(db).SaveAsync(current.Id, owner.Id, "{}", null);
         if (provider == "sqlserver")
         {
             await using var anotherDb = database.Open();
@@ -252,7 +312,7 @@ public sealed class ProjectDraftServiceTests
     {
         try
         {
-            await new ProjectDraftService(db).SaveAsync(project, actor, "{}", token);
+            await CreateService(db).SaveAsync(project, actor, "{}", token);
             return true;
         }
         catch (DbUpdateConcurrencyException)
@@ -260,6 +320,29 @@ public sealed class ProjectDraftServiceTests
             return false;
         }
     }
+
+    private static ProjectDraftService CreateService(
+        ReqvioraDbContext db)
+    {
+        return new ProjectDraftService(
+            db,
+            new EmptyRequirementReviewCatalog());
+    }
+
+    private sealed class EmptyRequirementReviewCatalog
+        : IRequirementReviewCatalog
+    {
+        public Task<IReadOnlyList<ReviewedRequirement>>
+            ListByProjectAsync(
+                Guid projectId,
+                CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<ReviewedRequirement> reviews = [];
+
+            return Task.FromResult(reviews);
+        }
+    }
+
 
     private static async Task<(User Owner, Project Project)> SeedProjectAsync(ReqvioraDbContext db)
     {

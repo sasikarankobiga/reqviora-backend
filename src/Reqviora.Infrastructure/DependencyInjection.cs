@@ -1,6 +1,7 @@
 using System.Text;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,10 +45,17 @@ public static class DependencyInjection
                     npgsql.MigrationsAssembly(typeof(ReqvioraDbContext).Assembly.FullName));
         });
 
-        services.AddHealthChecks()
+        var healthChecks = services.AddHealthChecks()
             .AddDbContextCheck<ReqvioraDbContext>(
                 name: databaseProvider,
                 tags: ["ready"]);
+
+        var smtp = configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>() ?? new SmtpOptions();
+        if (!string.IsNullOrWhiteSpace(smtp.Host))
+            healthChecks.AddCheck("smtp", new TcpEndpointHealthCheck(smtp.Host, smtp.Port), tags: ["ready"]);
+        var storage = configuration.GetSection(StorageOptions.SectionName).Get<StorageOptions>() ?? new StorageOptions();
+        if (storage.RequireAntivirus)
+            healthChecks.AddCheck("antivirus", new TcpEndpointHealthCheck(storage.ClamAvHost, storage.ClamAvPort), tags: ["ready"]);
 
         var jwtSection = configuration.GetSection(JwtOptions.SectionName);
         var jwtOptions = jwtSection.Get<JwtOptions>()
@@ -82,7 +90,17 @@ public static class DependencyInjection
                     RoleClaimType = ClaimTypes.Role
                 };
             });
-        services.AddAuthorization();
+        services.AddAuthorization(options =>
+        {
+            options.DefaultPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .RequireClaim("email_verified", "true")
+                .Build();
+
+            options.AddPolicy(
+                "EmailVerificationAccess",
+                policy => policy.RequireAuthenticatedUser());
+        });
         services.AddDataProtection();
         services.AddScoped<LoginSecurityService>();
         services.AddScoped<ILoginSecurityService>(sp => sp.GetRequiredService<LoginSecurityService>());
@@ -114,6 +132,7 @@ public static class DependencyInjection
             .AddScoped<IRequirementReviewStore>(_ => databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
                 ? new SqlServerRequirementReviewStore(connectionString)
                 : new PostgresRequirementReviewStore(connectionString))
+            .AddScoped<IRequirementReviewCatalog, ProjectRequirementReviewCatalog>()
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ProjectDraftService>()
             .AddScoped<ProjectExportService>()
