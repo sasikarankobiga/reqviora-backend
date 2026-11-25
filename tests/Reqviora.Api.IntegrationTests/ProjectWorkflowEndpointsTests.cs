@@ -571,7 +571,8 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     public async Task Blueprint_graph_approval_and_verified_export_are_available_to_owner()
     {
         using var client = CreateClient(_factory.Owner);
-        var blueprint = LoadBlueprint(_factory.Project.Id);
+        var blueprint = LoadBlueprint(_factory.Project.Id, _factory.Owner.Id);
+        SeedFixtureReview(blueprint, _factory.Project.Id, _factory.Owner.Id);
 
         using var save = await client.PutAsJsonAsync(
             $"/api/projects/{_factory.Project.Id}/blueprints/current",
@@ -673,6 +674,71 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, nextDraft.StatusCode);
     }
 
+    [Fact]
+    public async Task Blueprint_confirmation_must_match_project_review_at_save_and_approval()
+    {
+        using var client = CreateClient(_factory.Owner);
+        var projectId = _factory.Project.Id;
+        var path = $"/api/projects/{projectId}";
+        var blueprint = LoadBlueprint(projectId, _factory.Owner.Id);
+        var saveBody = new { draft = new { }, blueprint, expectedConcurrencyToken = (Guid?)null };
+        using var missing = await client.PutAsJsonAsync(path + "/blueprints/current", saveBody);
+        Assert.Equal(HttpStatusCode.Conflict, missing.StatusCode);
+        SeedFixtureReview(blueprint, Guid.NewGuid(), _factory.Owner.Id);
+        using var foreign = await client.PutAsJsonAsync(path + "/blueprints/current", saveBody);
+        Assert.Equal(HttpStatusCode.Conflict, foreign.StatusCode);
+        SeedFixtureReview(blueprint, projectId, _factory.OtherUser.Id);
+        using var forgedActor = await client.PutAsJsonAsync(path + "/blueprints/current", saveBody);
+        Assert.Equal(HttpStatusCode.Conflict, forgedActor.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync(path + "/drafts/current")).StatusCode);
+        _factory.CandidateStore.Items.RemoveAll(x => x.ProjectId == projectId);
+        SeedFixtureReview(blueprint, projectId, _factory.Owner.Id);
+        var index = _factory.CandidateStore.Items.FindIndex(x => x.ProjectId == projectId);
+        var validRecord = _factory.CandidateStore.Items[index].Requirement;
+        foreach (var altered in new[]
+        {
+            validRecord with { Description = "Different confirmed content" },
+            validRecord with { ConfirmedAt = validRecord.ConfirmedAt!.Value.AddMinutes(1) },
+            validRecord with { Evidence = [new CandidateEvidence("OTHER", "section 1", "Different evidence")] },
+            validRecord with { Status = RequirementReviewStatus.Suggested, ConfirmedBy = null, ConfirmedAt = null }
+        })
+        {
+            _factory.CandidateStore.Items[index] = (projectId, altered);
+            using var mismatch = await client.PutAsJsonAsync(path + "/blueprints/current", saveBody);
+            Assert.Equal(HttpStatusCode.Conflict, mismatch.StatusCode);
+        }
+        _factory.CandidateStore.Items[index] = (projectId, validRecord);
+        using var saved = await client.PutAsJsonAsync(path + "/blueprints/current", saveBody);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var draft = (await saved.Content.ReadFromJsonAsync<ProjectDraftResponse>())!;
+        using var validationResponse = await client.PostAsJsonAsync(path + "/blueprints/validate",
+            new { expectedConcurrencyToken = draft.ConcurrencyToken });
+        var validation = (await validationResponse.Content.ReadFromJsonAsync<ValidationRunResponse>())!;
+        Assert.True(validation.Passed);
+        using var edited = await client.PostAsJsonAsync(path + "/requirements/REQ-001/review",
+            new { expectedRevision = 2, decision = "edit", editedTitle = "New title", editedDescription = "New content" });
+        Assert.Equal(HttpStatusCode.OK, edited.StatusCode);
+        using var refused = await client.PostAsJsonAsync(path + "/approvals",
+            new { expectedConcurrencyToken = draft.ConcurrencyToken, validationRunId = validation.Id });
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        using var revalidation = await client.PostAsJsonAsync(path + "/blueprints/validate",
+            new { expectedConcurrencyToken = draft.ConcurrencyToken });
+        var latest = (await revalidation.Content.ReadFromJsonAsync<ValidationRunResponse>())!;
+        Assert.False(latest.Passed);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+        Assert.Empty(await db.ApprovedRevisions.ToArrayAsync());
+    }
+
+    private void SeedFixtureReview(BlueprintDocument blueprint, Guid projectId, Guid actor)
+    {
+        var requirement = blueprint.Requirements[0];
+        _factory.CandidateStore.Items.Add((projectId, new ReviewedRequirement(requirement.Id,
+            "Catalogue search", "Users can search the school library catalogue.", RequirementReviewStatus.Confirmed,
+            2, requirement.Evidence.Select(e => new CandidateEvidence(e.SourceId, e.Locator, e.Quote!)).ToArray(),
+            actor, requirement.ConfirmedAt)));
+    }
+
     public void Dispose() => _factory.Dispose();
 
     private HttpClient CreateClient(User user, WorkflowApiFactory? factory = null)
@@ -686,11 +752,13 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         return client;
     }
 
-    private static BlueprintDocument LoadBlueprint(Guid projectId)
+    private static BlueprintDocument LoadBlueprint(Guid projectId, Guid reviewerId)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "blueprint.valid.v1.json");
         var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
         json["projectId"] = projectId.ToString();
+        json["requirements"]![0]!["text"] = "Catalogue search\nUsers can search the school library catalogue.";
+        json["requirements"]![0]!["confirmedBy"] = reviewerId.ToString();
         return BlueprintJsonContract.Parse(json.ToJsonString());
     }
 

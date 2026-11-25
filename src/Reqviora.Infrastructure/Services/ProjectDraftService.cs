@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Reqviora.Application.Features.SecondBrain;
+using Reqviora.Application.Features.RequirementReview;
+using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Authorization;
@@ -8,7 +10,7 @@ using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Infrastructure.Services;
 
-public sealed class ProjectDraftService(ReqvioraDbContext db)
+public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReviewStore reviews)
 {
     public Task<ProjectDraft> SaveAsync(
         Guid projectId, Guid actorId, string draftJson, Guid? expectedToken, CancellationToken cancellationToken = default) =>
@@ -57,7 +59,10 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
         var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
         EnsureOpen(draft);
         var version = await GetCurrentVersionAsync(draft, cancellationToken);
-        var issues = DraftBlueprint.ValidateStored(version.BlueprintJson);
+        var issues = DraftBlueprint.ValidateStored(version.BlueprintJson).ToList();
+        if (issues.Count == 0 && version.BlueprintJson is not null)
+            issues.AddRange(await CheckConfirmationsAsync(projectId,
+                BlueprintJsonContract.Parse(version.BlueprintJson), cancellationToken));
 
         var run = new ValidationRun
         {
@@ -88,6 +93,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
 
         var blueprint = JsonSerializer.Deserialize<BlueprintDocument>(version.BlueprintJson, DraftBlueprint.Json)
             ?? throw new InvalidOperationException("The validated draft has no Blueprint.");
+        await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
         var approvedAt = DateTimeOffset.UtcNow;
         var revision = new ApprovedRevision
         {
@@ -148,6 +154,8 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
     {
         await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
         RequireDraftJson(draftJson);
+        if (blueprint is not null)
+            await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
         var blueprintForVersion = blueprint;
         var blueprintJson = blueprint is null ? null : JsonSerializer.Serialize(blueprint, DraftBlueprint.Json);
         if (blueprintJson?.Length > 2_000_000)
@@ -184,6 +192,61 @@ public sealed class ProjectDraftService(ReqvioraDbContext db)
         AddDraftVersion(draft, blueprintForVersion, blueprintJson);
         await PersistDraftAsync(cancellationToken);
         return draft;
+    }
+
+    // Review storage is authoritative; client-supplied confirmation fields are not proof.
+    // Read checks deliberately fail closed. Cross-store atomic locking is not provided here.
+    private async Task RequireConfirmationsAsync(Guid projectId, BlueprintDocument blueprint,
+        CancellationToken cancellationToken)
+    {
+        if ((await CheckConfirmationsAsync(projectId, blueprint, cancellationToken)).Count != 0)
+            throw new InvalidOperationException("Blueprint confirmation does not match the current project review record.");
+    }
+
+    private async Task<List<BlueprintValidationIssue>> CheckConfirmationsAsync(Guid projectId,
+        BlueprintDocument blueprint, CancellationToken cancellationToken)
+    {
+        var issues = new List<BlueprintValidationIssue>();
+        if (blueprint.Requirements is null)
+        {
+            issues.Add(new("CONFIRMATION_MISMATCH", "$.requirements", "Requirements are required."));
+            return issues;
+        }
+        for (var i = 0; i < blueprint.Requirements.Count; i++)
+        {
+            var requirement = blueprint.Requirements[i];
+            var path = $"$.requirements[{i}]";
+            if (requirement is null)
+            {
+                issues.Add(new("CONFIRMATION_MISMATCH", path, "Invalid requirement."));
+                continue;
+            }
+            if (requirement.Status != "confirmed")
+            {
+                if (requirement.ConfirmedBy is not null || requirement.ConfirmedAt is not null)
+                    issues.Add(new("CONFIRMATION_MISMATCH", path, "Unconfirmed requirements cannot claim confirmation."));
+                continue;
+            }
+            if (string.IsNullOrWhiteSpace(requirement.Id) || requirement.Id.Length > 128 ||
+                !Guid.TryParse(requirement.ConfirmedBy, out var actor) || actor == Guid.Empty ||
+                requirement.ConfirmedAt is null || requirement.Evidence is null)
+            {
+                issues.Add(new("CONFIRMATION_MISMATCH", path, "Human confirmation metadata is invalid."));
+                continue;
+            }
+            var snapshot = await reviews.FindAsync(projectId, requirement.Id, cancellationToken);
+            var review = snapshot?.Requirement;
+            if (snapshot is null || snapshot.ProjectId != projectId || review is null ||
+                review.Id != requirement.Id || review.Status != RequirementReviewStatus.Confirmed ||
+                review.ConfirmedBy != actor || review.ConfirmedAt != requirement.ConfirmedAt ||
+                requirement.Text != review.Title + "\n" + review.Description ||
+                review.Evidence.Count != requirement.Evidence.Count ||
+                !review.Evidence.Zip(requirement.Evidence).All(pair => pair.Second is not null &&
+                    pair.First.SourceId == pair.Second.SourceId && pair.First.Locator == pair.Second.Locator &&
+                    pair.First.Quote == pair.Second.Quote))
+                issues.Add(new("CONFIRMATION_MISMATCH", path, "Requirement does not match the current confirmed review."));
+        }
+        return issues;
     }
 
     private async Task<ProjectDraft> GetRequiredDraftAsync(Guid projectId, Guid expectedToken, CancellationToken cancellationToken)
