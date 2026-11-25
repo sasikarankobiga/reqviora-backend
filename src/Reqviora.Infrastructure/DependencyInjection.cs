@@ -11,6 +11,7 @@ using Reqviora.Application.Features.Projects.Interfaces;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.VoiceProcessing;
+using Reqviora.Application.Features.DocumentIntelligence;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -126,6 +127,7 @@ public static class DependencyInjection
             .AddScoped<ProjectExportService>()
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
+            .AddScoped<IDocumentTextParser, DocumentTextParser>()
             .AddScoped<IFileStorageService, FileStorageService>();
     }
 }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.Documents;
+using Reqviora.Application.Features.DocumentIntelligence;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Api.Features.ProjectWorkflow;
@@ -29,6 +30,55 @@ public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorag
         string MediaType,
         long SizeBytes,
         DateTimeOffset CreatedAt);
+
+    public sealed record DocumentMetadata(Guid Id, Guid ProjectId, string FileName, DateTimeOffset CreatedAt);
+
+    [HttpGet]
+    public async Task<IActionResult> List(Guid projectId, CancellationToken ct)
+    {
+        await ProjectApiAccess.RequireReadAsync(db, projectId, ProjectApiAccess.RequireUserId(User), ct);
+        return Ok(await db.ProjectDocuments.AsNoTracking().Where(item => item.ProjectId == projectId)
+            .OrderByDescending(item => item.CreatedAt)
+            .Select(item => new DocumentMetadata(item.Id, item.ProjectId, item.FileName, item.CreatedAt))
+            .ToListAsync(ct));
+    }
+
+    [HttpGet("{documentId:guid}")]
+    public async Task<IActionResult> Get(Guid projectId, Guid documentId, CancellationToken ct)
+    {
+        await ProjectApiAccess.RequireReadAsync(db, projectId, ProjectApiAccess.RequireUserId(User), ct);
+        var document = await db.ProjectDocuments.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ProjectId == projectId && item.Id == documentId, ct);
+        return document is null ? NotFound() : Ok(new DocumentMetadata(document.Id, document.ProjectId,
+            document.FileName, document.CreatedAt));
+    }
+
+    [HttpPost("{documentId:guid}/parse")]
+    public async Task<IActionResult> Parse(Guid projectId, Guid documentId,
+        [FromServices] IDocumentTextParser parser, CancellationToken ct)
+    {
+        await ProjectApiAccess.RequireWriteAsync(db, projectId, ProjectApiAccess.RequireUserId(User), ct);
+        var document = await db.ProjectDocuments.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ProjectId == projectId && item.Id == documentId, ct);
+        if (document is null) return NotFound();
+        var mediaType = AllowedExtensions.FirstOrDefault(item =>
+            item.Value.Equals(Path.GetExtension(document.FileName), StringComparison.OrdinalIgnoreCase)).Key;
+        if (mediaType is null) return BadRequest();
+        try
+        {
+            await using var stream = await storage.OpenReadAsync(document.StoragePath, ct);
+            var input = new DocumentInputRequest(projectId, document.Id, document.FileName, mediaType, stream.Length);
+            return Ok(await parser.ParseAsync(input, stream, ct));
+        }
+        catch (InvalidDataException)
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest, title: "The document cannot be parsed or exceeds parsing limits.");
+        }
+        catch (IOException)
+        {
+            return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "The stored document is unavailable.");
+        }
+    }
 
     [HttpPost, Consumes("multipart/form-data"), RequestSizeLimit(26_214_400)]
     [ProducesResponseType<DocumentUploadResponse>(StatusCodes.Status201Created)]

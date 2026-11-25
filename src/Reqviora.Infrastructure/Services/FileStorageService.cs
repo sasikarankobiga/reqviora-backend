@@ -38,6 +38,21 @@ public sealed class FileStorageService(IOptions<StorageOptions> options) : IFile
         return relative.Replace('\\', '/');
     }
 
+    public Task<Stream> OpenReadAsync(string storagePath, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var root = Path.GetFullPath(options.Value.RootPath);
+        if (string.IsNullOrWhiteSpace(storagePath) || Path.IsPathRooted(storagePath))
+            throw new InvalidDataException("Invalid storage path.");
+        var path = Path.GetFullPath(Path.Combine(root, storagePath));
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison))
+            throw new InvalidDataException("Invalid storage path.");
+        Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return Task.FromResult(stream);
+    }
+
     private static async Task<bool> ScanAsync(MemoryStream content, StorageOptions options, CancellationToken ct)
     {
         try

@@ -239,6 +239,16 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         var responseBody = await uploaded.Content.ReadAsStringAsync();
         Assert.DoesNotContain("storagePath", responseBody, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(1, _factory.Storage.Saves);
+        var documentId = JsonNode.Parse(responseBody)!["id"]!.GetValue<Guid>();
+        using var parsed = await owner.PostAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}/parse", null);
+        Assert.Equal(HttpStatusCode.OK, parsed.StatusCode);
+        Assert.Contains("REQVIORA requirements", await parsed.Content.ReadAsStringAsync());
+        using var listed = await owner.GetAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}");
+        Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
+        Assert.DoesNotContain("storagePath", await listed.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        using var outsider = CreateClient(_factory.OtherUser);
+        using var forbiddenParse = await outsider.PostAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}/parse", null);
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenParse.StatusCode);
 
         using var mismatchedForm = DocumentForm("requirements.exe", "text/plain");
         using var mismatched = await owner.PostAsync(
@@ -517,10 +527,11 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 
         public sealed class TestFileStorage : IFileStorageService
         {
+            private readonly Dictionary<string, byte[]> _files = new();
             public int Saves { get; private set; }
             public bool RejectNext { get; set; }
 
-            public Task<string> SaveAsync(
+            public async Task<string> SaveAsync(
                 Stream content,
                 string fileName,
                 CancellationToken cancellationToken = default)
@@ -531,8 +542,18 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                     throw new InvalidDataException("Simulated malware detection.");
                 }
 
+                using var buffer = new MemoryStream();
+                await content.CopyToAsync(buffer, cancellationToken);
+                var path = $"private/{Guid.NewGuid():N}{Path.GetExtension(fileName)}";
+                _files.Add(path, buffer.ToArray());
                 Saves++;
-                return Task.FromResult($"private/{Guid.NewGuid():N}{Path.GetExtension(fileName)}");
+                return path;
+            }
+
+            public Task<Stream> OpenReadAsync(string storagePath, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult<Stream>(new MemoryStream(_files[storagePath], writable: false));
             }
         }
     }
