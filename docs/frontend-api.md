@@ -112,7 +112,7 @@ Review decisions are `accept`, `edit`, `reject`, or `defer` and require `expecte
 | GET | `/api/projects/{projectId}/exports/{exportId}` | One export's metadata |
 | GET | `/api/projects/{projectId}/exports/{exportId}/download` | Authorized ZIP download |
 
-An approval requires a passing validation run for the exact current draft version. Export reads verify the manifest and SHA-256 digest before returning content.
+An approval requires a passing validation run for the exact current draft version. When a `guidedBuilder` is present, all eight steps and their cross-step coverage must also pass before approval. Export generator 1.1 packages 24 manifest-tracked artifacts plus `manifest.json`, including the SRS, requirement traceability matrix, developer handoff, typed design documentation, `universal-blueprint.json`, `asset-manifest.json`, and immutable `project.json`. Export reads verify every file digest, the manifest, and the archive SHA-256 before returning content.
 
 ## Configuration
 

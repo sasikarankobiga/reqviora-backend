@@ -63,6 +63,17 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
         EnsureOpen(draft);
         var version = await GetCurrentVersionAsync(draft, cancellationToken);
         var issues = DraftBlueprint.ValidateStored(version.BlueprintJson).ToList();
+        using (var draftDocument = JsonDocument.Parse(version.DraftJson))
+        {
+            if (draftDocument.RootElement.TryGetProperty("guidedBuilder", out var builderElement))
+            {
+                var builder = builderElement.Deserialize<GuidedBuilderDocument>(DraftBlueprint.Json)
+                    ?? throw new InvalidDataException("The guided builder document is unavailable.");
+                issues.AddRange(GuidedBuilderValidator.Validate(builder, requireComplete: true)
+                    .Select(issue => new BlueprintValidationIssue(
+                        $"builder_{issue.Code}", $"guidedBuilder.{issue.Path}", issue.Message)));
+            }
+        }
         if (issues.Count == 0 && version.BlueprintJson is not null)
             issues.AddRange(await CheckConfirmationsAsync(projectId,
                 BlueprintJsonContract.Parse(version.BlueprintJson), cancellationToken));

@@ -11,6 +11,7 @@ using Reqviora.Application.Features.SecondBrain;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
+using Reqviora.Application.Features.GuidedBuilder;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Services;
@@ -26,6 +27,40 @@ public sealed class ProjectDraftServiceTests
             yield return ["postgres"];
         if (Environment.GetEnvironmentVariable("REQVIORA_TEST_SQLSERVER") is not null)
             yield return ["sqlserver"];
+    }
+
+    [Fact]
+    public async Task Second_brain_renders_typed_builder_theme_audience_and_assets()
+    {
+        var projectId = Guid.NewGuid();
+        var builder = new GuidedBuilderDocument(GuidedBuilderValidator.CurrentVersion,
+            IdentityAudience: new IdentityAudienceStep("Reqviora", "Traceable design", "Description", "SaaS", "Software",
+                "Lost context", ["Preserve context"], ["Product teams"], [],
+                [new BuilderRole("ROLE-1", "Designer", "Creates designs")], ["web"], "MVP", ["WCAG AA"], [],
+                ["Complete coverage"], []),
+            ThemeBrand: new ThemeBrandStep(
+                new Dictionary<string, string> { ["primary"] = "#123456" },
+                new Dictionary<string, string> { ["brand"] = "primary" }, [],
+                new Dictionary<string, double> { ["sm"] = 8 }, [], [],
+                [new BuilderBreakpoint("mobile", 0)],
+                [new BuilderBrandAsset("ASSET-1", "logo", "private/logo.svg", "Reqviora logo")],
+                new BuilderAccessibility("AA", true, true, true)));
+        var draftJson = JsonSerializer.Serialize(new { guidedBuilder = builder },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var snapshot = new ApprovedProjectSnapshot(projectId, "Reqviora", "Description", Guid.NewGuid(),
+            Guid.NewGuid(), 1, null, Guid.NewGuid(), DateTimeOffset.UtcNow, Guid.NewGuid(), DateTimeOffset.UtcNow,
+            draftJson, new BlueprintDocument { ProjectId = projectId, BlueprintId = "BP-1", Revision = 1 });
+
+        var package = SecondBrainPackageBuilder.Build(snapshot);
+
+        using var archive = new ZipArchive(new MemoryStream(package.Archive), ZipArchiveMode.Read);
+        using var tokens = new StreamReader(archive.GetEntry("design-tokens.md")!.Open());
+        Assert.Contains("#123456", await tokens.ReadToEndAsync());
+        using var audience = new StreamReader(archive.GetEntry("audience-and-roles.md")!.Open());
+        Assert.Contains("Product teams", await audience.ReadToEndAsync());
+        using var assets = JsonDocument.Parse(archive.GetEntry("asset-manifest.json")!.Open());
+        Assert.Equal("ASSET-1", assets.RootElement[0].GetProperty("id").GetString());
+        Assert.True(SecondBrainPackageBuilder.Verify(package, projectId, snapshot.RevisionId));
     }
 
     [Theory]
@@ -105,6 +140,26 @@ public sealed class ProjectDraftServiceTests
 
     [Theory]
     [MemberData(nameof(Providers))]
+    public async Task Guided_builder_must_be_complete_before_approval_validation_passes(string provider)
+    {
+        await using var database = await PersistenceDatabase.CreateAsync(provider);
+        await using var db = database.Open();
+        var (owner, project) = await SeedProjectAsync(db);
+        var service = new ProjectDraftService(db, new FixtureReviewStore(project.Id, owner.Id));
+        var blueprint = await LoadBlueprintAsync(project.Id, owner.Id);
+        var draft = await service.SaveDesignAsync(project.Id, owner.Id,
+            """{"guidedBuilder":{"schemaVersion":"1.0"}}""", blueprint, null);
+
+        var validation = await service.ValidateAsync(project.Id, owner.Id, draft.ConcurrencyToken);
+
+        Assert.False(validation.Passed);
+        Assert.Equal(8, validation.Findings.Count(x => x.Code == "builder_missing_step"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ApproveAsync(project.Id, owner.Id, draft.ConcurrencyToken, validation.Id));
+    }
+
+    [Theory]
+    [MemberData(nameof(Providers))]
     public async Task Approval_is_bound_to_current_validation_and_exports_the_frozen_graph(string provider)
     {
         await using var database = await PersistenceDatabase.CreateAsync(provider);
@@ -153,16 +208,22 @@ public sealed class ProjectDraftServiceTests
 
         using (var archive = new ZipArchive(new MemoryStream(export.Archive), ZipArchiveMode.Read))
         {
-            Assert.Equal(20, archive.Entries.Count);
+            Assert.Equal(25, archive.Entries.Count);
             var manifest = JsonSerializer.Deserialize<SecondBrainManifest>(export.ManifestJson,
                 new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
-            Assert.Equal(19, manifest.ReferenceCount);
-            Assert.Equal(19, manifest.Files.Count);
-            Assert.Equal(19, manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal).Count());
+            Assert.Equal(24, manifest.ReferenceCount);
+            Assert.Equal(24, manifest.Files.Count);
+            Assert.Equal(24, manifest.Files.Select(file => file.Path).Distinct(StringComparer.Ordinal).Count());
             Assert.All(manifest.Files, file =>
                 Assert.NotNull(archive.GetEntry(file.Path)));
             using var tokens = new StreamReader(archive.GetEntry("design-tokens.md")!.Open());
             Assert.Contains("Primary blue", await tokens.ReadToEndAsync());
+            using var srs = new StreamReader(archive.GetEntry("software-requirements-specification.md")!.Open());
+            Assert.Contains("REQ-001", await srs.ReadToEndAsync());
+            using var traceability = new StreamReader(archive.GetEntry("requirement-traceability-matrix.md")!.Open());
+            Assert.Contains("REQ-001 → FEAT-001 → SCR-001", await traceability.ReadToEndAsync());
+            using var universal = JsonDocument.Parse(archive.GetEntry("universal-blueprint.json")!.Open());
+            Assert.Equal(blueprint.BlueprintId, universal.RootElement.GetProperty("blueprintId").GetString());
             using var json = JsonDocument.Parse(archive.GetEntry("project.json")!.Open());
             Assert.Equal("suggested", json.RootElement.GetProperty("blueprint").GetProperty("requirements")[1]
                 .GetProperty("status").GetString());
