@@ -254,6 +254,8 @@ public sealed class ProjectDraftServiceTests
         Assert.Contains("[RowVersion] rowversion NOT NULL", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("TR_ApprovedRevisions_Immutable", sql);
         Assert.Contains("TR_DesignDraftVersions_Immutable", sql);
+        Assert.Contains("CREATE TABLE [AiJobs]", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("IX_AiJobs_OwnerId_ProjectId_IdempotencyKey", sql);
         Assert.False(db.Database.HasPendingModelChanges());
     }
 
@@ -268,7 +270,7 @@ public sealed class ProjectDraftServiceTests
         foreach (var table in new[]
         {
             "Users", "Projects", "ProjectMembers", "ProjectDrafts", "DesignDraftVersions",
-            "ApprovedRevisions", "ExportRecords", "AuditEvents", "LoginAudits", "AccountActionTokens"
+            "ApprovedRevisions", "ExportRecords", "AuditEvents", "LoginAudits", "AccountActionTokens", "AiJobs"
         })
         {
             Assert.Contains($"'{table}'", sql, StringComparison.Ordinal);

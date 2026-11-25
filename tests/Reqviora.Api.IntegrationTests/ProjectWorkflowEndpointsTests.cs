@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.AIOrchestration;
@@ -165,6 +166,59 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 
         using var mcp = await client.GetAsync("/api/mcp/v1/catalog");
         Assert.Equal(HttpStatusCode.NotFound, mcp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Durable_ai_job_api_enforces_project_access_idempotency_and_cancellation()
+    {
+        using var factory = new WorkflowApiFactory(enableAiForTest: true);
+        using var owner = CreateClient(factory.Owner, factory);
+        using var missingKey = await owner.PostAsJsonAsync(
+            "/api/ai/jobs", new { projectId = factory.Project.Id, prompt = "Generate" });
+        Assert.Equal(HttpStatusCode.BadRequest, missingKey.StatusCode);
+
+        using var outsider = CreateClient(factory.OtherUser, factory);
+        using var deniedRequest = new HttpRequestMessage(HttpMethod.Post, "/api/ai/jobs")
+        {
+            Content = JsonContent.Create(new { projectId = factory.Project.Id, prompt = "Denied" })
+        };
+        deniedRequest.Headers.Add("Idempotency-Key", "outsider-1");
+        using var denied = await outsider.SendAsync(deniedRequest);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+
+        using var createRequest = new HttpRequestMessage(HttpMethod.Post, "/api/ai/jobs")
+        {
+            Content = JsonContent.Create(new { projectId = factory.Project.Id, prompt = "Generate" })
+        };
+        createRequest.Headers.Add("Idempotency-Key", "owner-1");
+        using var created = await owner.SendAsync(createRequest);
+        Assert.Equal(HttpStatusCode.Accepted, created.StatusCode);
+        var first = await created.Content.ReadFromJsonAsync<AiJobCreatedPayload>();
+        Assert.NotNull(first);
+        Assert.True(first.Created);
+        Assert.Equal("pending", first.State);
+
+        using var replayRequest = new HttpRequestMessage(HttpMethod.Post, "/api/ai/jobs")
+        {
+            Content = JsonContent.Create(new { projectId = factory.Project.Id, prompt = "Changed retry body" })
+        };
+        replayRequest.Headers.Add("Idempotency-Key", "owner-1");
+        using var replay = await owner.SendAsync(replayRequest);
+        var second = await replay.Content.ReadFromJsonAsync<AiJobCreatedPayload>();
+        Assert.Equal(first.Id, second!.Id);
+        Assert.False(second.Created);
+
+        using var get = await owner.GetAsync($"/api/ai/jobs/{first.Id}");
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        var persisted = await get.Content.ReadFromJsonAsync<AiJobStatus>();
+        Assert.Equal(factory.Project.Id, persisted!.ProjectId);
+        Assert.Equal("pending", persisted.State);
+
+        using var cancel = await owner.PostAsync($"/api/ai/jobs/{first.Id}/cancel", null);
+        Assert.Equal(HttpStatusCode.Accepted, cancel.StatusCode);
+        var cancelled = await cancel.Content.ReadFromJsonAsync<AiJobStatus>();
+        Assert.Equal("cancelled", cancelled!.State);
+        Assert.NotNull(cancelled.CancellationRequestedAt);
     }
 
     [Fact]
@@ -789,6 +843,8 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         return form;
     }
 
+    private sealed record AiJobCreatedPayload(Guid Id, string State, bool Created);
+
     private sealed class WorkflowApiFactory : WebApplicationFactory<Program>
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -829,6 +885,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             builder.UseSetting("Jwt:Key", "workflow-test-signing-key-at-least-32-characters");
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<IHostedService>();
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<ReqvioraDbContext>>();
                 services.RemoveAll<ReqvioraDbContext>();

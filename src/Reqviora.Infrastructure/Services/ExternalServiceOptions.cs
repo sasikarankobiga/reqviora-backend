@@ -34,3 +34,15 @@ public sealed class AiOptions
     public string TranscriptionModel { get; set; } = "gpt-4o-mini-transcribe";
     public int TimeoutSeconds { get; set; } = 120;
 }
+
+public sealed class AiJobOptions
+{
+    public const string SectionName = "AIJobs";
+    public int PollIntervalMilliseconds { get; set; } = 1000;
+    public int LeaseSeconds { get; set; } = 180;
+    public int MaxAttempts { get; set; } = 3;
+    public int BaseRetrySeconds { get; set; } = 2;
+    public int MaxRetrySeconds { get; set; } = 60;
+    public int MaxPromptCharacters { get; set; } = 100_000;
+    public int MaxResultCharacters { get; set; } = 2_000_000;
+}

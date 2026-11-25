@@ -182,6 +182,7 @@ public static class DependencyInjection
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
+        services.Configure<AiJobOptions>(configuration.GetSection(AiJobOptions.SectionName));
         var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         services.AddHttpClient<IAIService, AIService>(client =>
         {
@@ -194,9 +195,9 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(ai.Endpoint, UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ai.TimeoutSeconds, 10, 600));
         });
-        services.AddSingleton<AIBackgroundQueue>();
-        services.AddSingleton<IAIJobQueue>(sp => sp.GetRequiredService<AIBackgroundQueue>());
-        services.AddHostedService(sp => sp.GetRequiredService<AIBackgroundQueue>());
+        services.AddScoped<IAiJobRepository, AiJobRepository>();
+        services.AddScoped<IAIJobQueue, PersistentAiJobService>();
+        services.AddHostedService<AiJobWorker>();
         services.AddHostedService<RetentionWorker>();
 
         return services

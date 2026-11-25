@@ -78,6 +78,21 @@ public static class ProductionConfigurationValidator
             Require(!string.IsNullOrWhiteSpace(configuration["AI:ApiKey"]),
                 "AI:Enabled requires a secret-backed API key after G0-07 approval.");
         }
+
+        Require(configuration.GetValue<int>("AIJobs:PollIntervalMilliseconds") is >= 100 and <= 30000,
+            "AIJobs:PollIntervalMilliseconds must be between 100 and 30000.");
+        Require(configuration.GetValue<int>("AIJobs:LeaseSeconds") is >= 30 and <= 3600,
+            "AIJobs:LeaseSeconds must be between 30 and 3600.");
+        Require(configuration.GetValue<int>("AIJobs:MaxAttempts") is >= 1 and <= 10,
+            "AIJobs:MaxAttempts must be between 1 and 10.");
+        var baseRetry = configuration.GetValue<int>("AIJobs:BaseRetrySeconds");
+        var maxRetry = configuration.GetValue<int>("AIJobs:MaxRetrySeconds");
+        Require(baseRetry is >= 1 and <= 300 && maxRetry >= baseRetry && maxRetry <= 3600,
+            "AI job retry settings are invalid.");
+        Require(configuration.GetValue<int>("AIJobs:MaxPromptCharacters") is >= 1 and <= 1_000_000,
+            "AIJobs:MaxPromptCharacters must be between 1 and 1000000.");
+        Require(configuration.GetValue<int>("AIJobs:MaxResultCharacters") is >= 1 and <= 10_000_000,
+            "AIJobs:MaxResultCharacters must be between 1 and 10000000.");
     }
 
     private static void RequireSecureUrl(string? value, string name)

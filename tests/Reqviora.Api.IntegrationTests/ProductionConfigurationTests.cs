@@ -22,6 +22,9 @@ public sealed class ProductionConfigurationTests
     [InlineData("DataProtection:KeysPath", "relative-keys")]
     [InlineData("DataProtection:CertificatePassword", "")]
     [InlineData("RateLimiting:Mode", "Unsupported")]
+    [InlineData("AIJobs:MaxAttempts", "0")]
+    [InlineData("AIJobs:LeaseSeconds", "10")]
+    [InlineData("AIJobs:MaxResultCharacters", "0")]
     public void Unsafe_production_configuration_is_rejected(string key, string value)
     {
         var values = Values();
@@ -71,6 +74,13 @@ public sealed class ProductionConfigurationTests
         ["Cors:AllowedOrigins:0"] = "https://app.example.test",
         ["ForwardedHeaders:Enabled"] = "false",
         ["RateLimiting:Mode"] = "Local",
+        ["AIJobs:PollIntervalMilliseconds"] = "1000",
+        ["AIJobs:LeaseSeconds"] = "180",
+        ["AIJobs:MaxAttempts"] = "3",
+        ["AIJobs:BaseRetrySeconds"] = "2",
+        ["AIJobs:MaxRetrySeconds"] = "60",
+        ["AIJobs:MaxPromptCharacters"] = "100000",
+        ["AIJobs:MaxResultCharacters"] = "2000000",
         ["Smtp:Host"] = "smtp.example.test",
         ["Smtp:Port"] = "587",
         ["Smtp:UseSsl"] = "true",

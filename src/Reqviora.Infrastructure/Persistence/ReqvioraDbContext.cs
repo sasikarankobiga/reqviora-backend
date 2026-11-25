@@ -24,6 +24,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<LoginAudit> LoginAudits => Set<LoginAudit>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<AiJob> AiJobs => Set<AiJob>();
 
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
@@ -137,6 +138,27 @@ public class ReqvioraDbContext : DbContext
             entity.Property(x => x.Method).HasMaxLength(16).IsRequired();
             entity.Property(x => x.Path).HasMaxLength(1000).IsRequired();
             entity.Property(x => x.IpAddress).HasMaxLength(64).IsRequired();
+        });
+        modelBuilder.Entity<AiJob>(entity =>
+        {
+            entity.HasIndex(job => new { job.OwnerId, job.ProjectId, job.IdempotencyKey }).IsUnique();
+            entity.HasIndex(job => new
+            {
+                job.State,
+                job.AvailableAtUnixTimeMilliseconds,
+                job.LeaseExpiresAtUnixTimeMilliseconds
+            });
+            entity.Property(job => job.Prompt).IsRequired();
+            entity.Property(job => job.IdempotencyKey).HasMaxLength(128).IsRequired();
+            entity.Property(job => job.State).HasConversion<string>().HasMaxLength(20).IsRequired();
+            entity.Property(job => job.LeaseOwner).HasMaxLength(300);
+            entity.Property(job => job.ErrorCode).HasMaxLength(100);
+            entity.Property(job => job.ErrorMessage).HasMaxLength(500);
+            entity.Property(job => job.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(job => job.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(job => job.OwnerId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }
