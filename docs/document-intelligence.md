@@ -6,4 +6,6 @@ Project document uploads now persist their validated media type, byte length, SH
 
 Parsing states are `pending`, `parsing`, `completed`, `requires_ocr`, and `failed`. Empty parser output is persisted as `requires_ocr`; this release does not add an OCR provider. Stored error codes are deliberately non-sensitive, and document metadata responses do not expose storage paths or content hashes.
 
+Uploads pass through a configurable ClamAV threat-scanner abstraction before any file is written. Infection is always rejected. Scanner unavailability is retried with bounded settings and fails closed when `Storage:RequireAntivirus` is enabled; local non-production environments may explicitly allow an unavailable scanner. No uploaded bytes or malware signatures are logged.
+
 Forward-only migrations are provided for PostgreSQL and SQL Server. The PostgreSQL migration enables row-level security on `ProjectDocumentSegments` and revokes public and known client-role table access. Deployment scripts under `database/deployment` are generated artifacts for controlled review and execution; they must not be applied automatically to shared databases.

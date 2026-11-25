@@ -21,6 +21,9 @@ public sealed class StorageOptions
     public string ClamAvHost { get; set; } = "localhost";
     public int ClamAvPort { get; set; } = 3310;
     public bool RequireAntivirus { get; set; }
+    public int AntivirusMaxAttempts { get; set; } = 2;
+    public int AntivirusRetryDelayMilliseconds { get; set; } = 250;
+    public int AntivirusTimeoutSeconds { get; set; } = 10;
 }
 
 public sealed class AiOptions

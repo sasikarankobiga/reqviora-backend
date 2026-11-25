@@ -217,6 +217,7 @@ public static class DependencyInjection
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IDocumentTextParser, DocumentTextParser>()
+            .AddScoped<IFileThreatScanner, ClamAvFileThreatScanner>()
             .AddScoped<IFileStorageService, FileStorageService>();
     }
 }

@@ -18,6 +18,9 @@ public sealed class ProductionConfigurationTests
     [InlineData("Smtp:Password", "")]
     [InlineData("Smtp:UseSsl", "false")]
     [InlineData("Storage:RequireAntivirus", "false")]
+    [InlineData("Storage:AntivirusMaxAttempts", "0")]
+    [InlineData("Storage:AntivirusRetryDelayMilliseconds", "5001")]
+    [InlineData("Storage:AntivirusTimeoutSeconds", "0")]
     [InlineData("Cors:AllowedOrigins:0", "http://app.example.test")]
     [InlineData("DataProtection:KeysPath", "relative-keys")]
     [InlineData("DataProtection:CertificatePassword", "")]
@@ -64,6 +67,9 @@ public sealed class ProductionConfigurationTests
         ["Storage:RequireAntivirus"] = "true",
         ["Storage:ClamAvHost"] = "clamav.internal",
         ["Storage:ClamAvPort"] = "3310",
+        ["Storage:AntivirusMaxAttempts"] = "2",
+        ["Storage:AntivirusRetryDelayMilliseconds"] = "250",
+        ["Storage:AntivirusTimeoutSeconds"] = "10",
         ["Storage:RootPath"] = Path.GetFullPath("private-artifacts"),
         ["DataProtection:ApplicationName"] = "REQVIORA",
         ["DataProtection:KeysPath"] = Path.GetFullPath("data-protection-keys"),

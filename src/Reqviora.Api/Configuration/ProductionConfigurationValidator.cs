@@ -12,6 +12,12 @@ public static class ProductionConfigurationValidator
         Require(!string.IsNullOrWhiteSpace(configuration["Storage:ClamAvHost"]) &&
                 configuration.GetValue<int>("Storage:ClamAvPort") is > 0 and <= 65535,
             "Production requires a valid ClamAV host and port.");
+        Require(configuration.GetValue<int>("Storage:AntivirusMaxAttempts") is >= 1 and <= 5,
+            "Storage:AntivirusMaxAttempts must be between 1 and 5.");
+        Require(configuration.GetValue<int>("Storage:AntivirusRetryDelayMilliseconds") is >= 0 and <= 5000,
+            "Storage:AntivirusRetryDelayMilliseconds must be between 0 and 5000.");
+        Require(configuration.GetValue<int>("Storage:AntivirusTimeoutSeconds") is >= 1 and <= 60,
+            "Storage:AntivirusTimeoutSeconds must be between 1 and 60.");
         Require(Path.IsPathRooted(configuration["Storage:RootPath"] ?? string.Empty),
             "Production requires an absolute private Storage:RootPath.");
 
