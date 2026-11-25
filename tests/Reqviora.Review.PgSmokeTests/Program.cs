@@ -59,6 +59,8 @@ await connection.OpenAsync();
 var schemaPath = Path.GetFullPath("database/reqviora_review/001_create_review_store.sql");
 await using (var schema = new NpgsqlCommand(await File.ReadAllTextAsync(schemaPath), connection))
     await schema.ExecuteNonQueryAsync();
+await using (var schema = new NpgsqlCommand(await File.ReadAllTextAsync("database/reqviora_review/002_create_clarifications.sql"), connection))
+    await schema.ExecuteNonQueryAsync();
 
 try
 {
@@ -73,6 +75,16 @@ try
         "Candidate insert and list share the review table");
     Check((await candidateStore.ListAsync(Guid.NewGuid(), 0, 10)).Count == 0, "Candidate listing isolates projects");
     Check((await candidateStore.ListAsync(projectId, 1, 10)).Count == 0, "Candidate listing honors pagination");
+
+    var clarifications = new ClarificationStore(connectionString, sqlServer: false);
+    var question = new ClarificationQuestion(Guid.NewGuid(), requirementId, "Which login method?", null, 1, false);
+    await clarifications.InsertAsync(projectId, question);
+    Check((await clarifications.ListAsync(projectId, requirementId, 0, 10)).Single() == question, "Clarification is persisted");
+    Check(await clarifications.FindAsync(Guid.NewGuid(), requirementId, question.Id) is null, "Clarifications isolate projects");
+    var answer = ClarificationService.Answer(question, new(question.Id, 1, "Email"));
+    Check(await clarifications.TryAnswerAsync(projectId, answer, 1, reviewerId), "Clarification answer is persisted");
+    Check(!await clarifications.TryAnswerAsync(projectId, answer, 1, reviewerId), "Repeated answer is rejected");
+    Check(await clarifications.FindAsync(projectId, requirementId, question.Id) == answer, "Resolved answer can be read");
 
     var store = new PostgresRequirementReviewStore(
         connectionString);

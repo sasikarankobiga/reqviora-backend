@@ -221,6 +221,54 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Manual_candidate_clarification_and_review_share_project_scoped_records()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var outsider = CreateClient(_factory.OtherUser);
+        var path = $"/api/projects/{_factory.Project.Id}/requirements/candidates";
+        var manual = new { title = "Login", description = "Users need sign in" };
+        using var denied = await outsider.PostAsJsonAsync(path + "/manual", manual);
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var invalid = await owner.PostAsJsonAsync(path + "/manual", new { title = " ", description = "x" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        using var created = await owner.PostAsJsonAsync(path + "/manual", manual);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var candidate = (await created.Content.ReadFromJsonAsync<ReviewedRequirement>())!;
+        Assert.Equal(RequirementReviewStatus.Suggested, candidate.Status);
+        Assert.Null(candidate.ConfirmedBy);
+        var detail = path + "/" + candidate.Id;
+        using var get = await owner.GetAsync(detail);
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        using var forbidden = await outsider.GetAsync(detail);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        var clarifications = detail + "/clarifications";
+        using var question = await owner.PostAsJsonAsync(clarifications, new { question = "Which login method?" });
+        Assert.Equal(HttpStatusCode.Created, question.StatusCode);
+        var saved = (await question.Content.ReadFromJsonAsync<ClarificationQuestion>())!;
+        var answer = clarifications + "/" + saved.Id + "/answer";
+        using var deniedAnswer = await outsider.PostAsJsonAsync(answer, new { expectedRevision = 1, answer = "Email" });
+        Assert.Equal(HttpStatusCode.Forbidden, deniedAnswer.StatusCode);
+        using var wrongRevision = await owner.PostAsJsonAsync(answer, new { expectedRevision = 2, answer = "Email" });
+        Assert.Equal(HttpStatusCode.Conflict, wrongRevision.StatusCode);
+        using var resolved = await owner.PostAsJsonAsync(answer, new { expectedRevision = 1, answer = "Email" });
+        Assert.Equal(HttpStatusCode.OK, resolved.StatusCode);
+        Assert.True((await resolved.Content.ReadFromJsonAsync<ClarificationQuestion>())!.IsResolved);
+        using var repeated = await owner.PostAsJsonAsync(answer, new { expectedRevision = 1, answer = "Other" });
+        Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
+        using var list = await owner.GetAsync(clarifications);
+        Assert.Equal("Email", Assert.Single((await list.Content.ReadFromJsonAsync<ClarificationQuestion[]>())!).Answer);
+        using var beforeReview = await owner.GetAsync(detail);
+        Assert.Equal(RequirementReviewStatus.Suggested, (await beforeReview.Content.ReadFromJsonAsync<ReviewedRequirement>())!.Status);
+        using var review = await owner.PostAsJsonAsync($"/api/projects/{_factory.Project.Id}/requirements/{candidate.Id}/review",
+            new { expectedRevision = 1, decision = "accept" });
+        Assert.Equal(HttpStatusCode.OK, review.StatusCode);
+        using var afterReview = await owner.GetAsync(detail);
+        var confirmed = (await afterReview.Content.ReadFromJsonAsync<ReviewedRequirement>())!;
+        Assert.Equal(RequirementReviewStatus.Confirmed, confirmed.Status);
+        Assert.Equal(_factory.Owner.Id, confirmed.ConfirmedBy);
+    }
+
+    [Fact]
     public async Task Flutter_project_contract_round_trips_all_nine_fields()
     {
         using var client = CreateClient(_factory.Owner);
@@ -552,13 +600,17 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                 services.RemoveAll<IFileStorageService>();
                 services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection));
                 services.AddSingleton<IFileStorageService>(Storage);
+                services.RemoveAll<IRequirementCandidateStore>();
+                services.AddSingleton<IRequirementCandidateStore>(CandidateStore);
+                services.RemoveAll<IRequirementReviewStore>();
+                services.AddSingleton<IRequirementReviewStore>(CandidateStore);
+                services.RemoveAll<IClarificationStore>();
+                services.AddSingleton<IClarificationStore>(CandidateStore);
                 if (_enableAiForTest)
                 {
                     services.PostConfigure<AiOptions>(options => options.Enabled = true);
                     services.RemoveAll<IStructuredAiProvider>();
                     services.AddSingleton<IStructuredAiProvider>(new TestExtractionProvider());
-                    services.RemoveAll<IRequirementCandidateStore>();
-                    services.AddSingleton<IRequirementCandidateStore>(CandidateStore);
                 }
             });
         }
@@ -590,7 +642,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             }
         }
 
-        public sealed class TestCandidateStore : IRequirementCandidateStore
+        public sealed class TestCandidateStore : IRequirementCandidateStore, IRequirementReviewStore, IClarificationStore
         {
             public List<(Guid ProjectId, ReviewedRequirement Requirement)> Items { get; } = new();
             public Task InsertAsync(Guid projectId, IReadOnlyList<ReviewedRequirement> candidates, CancellationToken cancellationToken = default)
@@ -601,6 +653,36 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             public Task<IReadOnlyList<ReviewedRequirement>> ListAsync(Guid projectId, int offset, int limit, CancellationToken cancellationToken = default) =>
                 Task.FromResult<IReadOnlyList<ReviewedRequirement>>(Items.Where(item => item.ProjectId == projectId)
                     .Select(item => item.Requirement).OrderBy(item => item.Id).Skip(offset).Take(limit).ToArray());
+            private readonly List<(Guid ProjectId, ClarificationQuestion Question)> _questions = new();
+            public Task<RequirementReviewSnapshot?> FindAsync(Guid projectId, string requirementId, CancellationToken cancellationToken = default)
+            {
+                var item = Items.SingleOrDefault(x => x.ProjectId == projectId && x.Requirement.Id == requirementId).Requirement;
+                return Task.FromResult<RequirementReviewSnapshot?>(item is null ? null : new(projectId, item));
+            }
+            public Task<bool> TryCommitAsync(Guid projectId, int expectedRevision, RequirementReviewResult result, CancellationToken cancellationToken = default)
+            {
+                var index = Items.FindIndex(x => x.ProjectId == projectId && x.Requirement.Id == result.Requirement.Id && x.Requirement.Revision == expectedRevision);
+                if (index < 0) return Task.FromResult(false);
+                Items[index] = (projectId, result.Requirement);
+                return Task.FromResult(true);
+            }
+            public Task InsertAsync(Guid projectId, ClarificationQuestion question, CancellationToken cancellationToken = default)
+            {
+                _questions.Add((projectId, question));
+                return Task.CompletedTask;
+            }
+            public Task<IReadOnlyList<ClarificationQuestion>> ListAsync(Guid projectId, string requirementId, int offset, int limit, CancellationToken cancellationToken = default) =>
+                Task.FromResult<IReadOnlyList<ClarificationQuestion>>(_questions.Where(x => x.ProjectId == projectId && x.Question.RequirementId == requirementId)
+                    .Select(x => x.Question).OrderBy(x => x.Id).Skip(offset).Take(limit).ToArray());
+            public Task<ClarificationQuestion?> FindAsync(Guid projectId, string requirementId, Guid questionId, CancellationToken cancellationToken = default) =>
+                Task.FromResult<ClarificationQuestion?>(_questions.SingleOrDefault(x => x.ProjectId == projectId && x.Question.RequirementId == requirementId && x.Question.Id == questionId).Question);
+            public Task<bool> TryAnswerAsync(Guid projectId, ClarificationQuestion answered, int expectedRevision, Guid actorId, CancellationToken cancellationToken = default)
+            {
+                var index = _questions.FindIndex(x => x.ProjectId == projectId && x.Question.RequirementId == answered.RequirementId && x.Question.Id == answered.Id && x.Question.Revision == expectedRevision && !x.Question.IsResolved);
+                if (index < 0) return Task.FromResult(false);
+                _questions[index] = (projectId, answered);
+                return Task.FromResult(true);
+            }
         }
 
         public sealed class TestFileStorage : IFileStorageService
