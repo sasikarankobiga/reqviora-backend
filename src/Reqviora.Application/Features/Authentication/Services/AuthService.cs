@@ -37,6 +37,9 @@ public sealed class AuthService(
             return Result<AuthResponseDto>.Failure("Invalid email or password.");
         }
 
+        if (!user.EmailVerified)
+            return Result<AuthResponseDto>.Failure("Email verification required.");
+
         var otpRequired = await loginSecurity.RequiresOtpAsync(user, ipAddress, deviceId, cancellationToken);
         if (otpRequired && (string.IsNullOrWhiteSpace(request.OtpCode) || !loginSecurity.ValidateOtp(user, request.OtpCode)))
         {
@@ -53,11 +56,11 @@ public sealed class AuthService(
         return Result<AuthResponseDto>.Success(response);
     }
 
-    public async Task<Result<AuthResponseDto>> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<Result<UserProfileDto>> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = NormalizeEmail(request.Email);
         if (await users.GetByEmailAsync(normalizedEmail, cancellationToken) is not null)
-            return Result<AuthResponseDto>.Failure("Email is already registered.");
+            return Result<UserProfileDto>.Failure("Email is already registered.");
 
         var user = new User
         {
@@ -69,9 +72,8 @@ public sealed class AuthService(
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
         await users.AddAsync(user, cancellationToken);
-        var response = await CreateSessionAsync(user, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return Result<AuthResponseDto>.Success(response);
+        return Result<UserProfileDto>.Success(new UserProfileDto(user.Id, user.Email, user.DisplayName, user.EmailVerified));
     }
 
     public async Task<Result<AuthResponseDto>> RefreshAsync(
@@ -81,7 +83,7 @@ public sealed class AuthService(
         var tokenHash = tokens.HashRefreshToken(request.RefreshToken);
         var existingToken = await users.GetRefreshTokenByHashAsync(tokenHash, cancellationToken);
         var now = timeProvider.GetUtcNow();
-        if (existingToken is null || !existingToken.IsActive(now))
+        if (existingToken is null || !existingToken.IsActive(now) || !existingToken.User.EmailVerified)
             return Result<AuthResponseDto>.Failure("Invalid or expired refresh token.");
 
         var newRefreshToken = tokens.CreateRefreshToken();

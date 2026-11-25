@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -20,6 +21,41 @@ namespace Reqviora.Api.IntegrationTests;
 
 public sealed class AccountSecurityEndpointsTests
 {
+    [Fact]
+    public async Task Registration_sends_verification_without_session_and_login_requires_confirmation()
+    {
+        using var factory = new AccountApiFactory();
+        using var client = factory.CreateClient();
+        var credentials = new { email = "new@example.test", password = "Initial-Password-123!" };
+        using var registered = await client.PostAsJsonAsync("/api/auth/register", new
+        { credentials.email, credentials.password, displayName = "New Person" });
+        Assert.True(registered.StatusCode == HttpStatusCode.Created, await registered.Content.ReadAsStringAsync());
+        using var json = JsonDocument.Parse(await registered.Content.ReadAsStringAsync());
+        Assert.True(json.RootElement.GetProperty("verificationEmailSent").GetBoolean());
+        Assert.False(json.RootElement.GetProperty("emailVerified").GetBoolean());
+        Assert.False(json.RootElement.TryGetProperty("accessToken", out _));
+        Assert.False(json.RootElement.TryGetProperty("refreshToken", out _));
+        using var blocked = await client.PostAsJsonAsync("/api/auth/login", credentials);
+        Assert.Equal(HttpStatusCode.Unauthorized, blocked.StatusCode);
+        using var confirmed = await client.PostAsJsonAsync("/api/account-security/email-verification/confirm", new { token = factory.Email.LastToken() });
+        Assert.Equal(HttpStatusCode.NoContent, confirmed.StatusCode);
+        using var login = await client.PostAsJsonAsync("/api/auth/login", credentials);
+        Assert.True(login.StatusCode == HttpStatusCode.OK, await login.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task Verification_resend_is_anonymous_and_does_not_reveal_account_existence()
+    {
+        using var factory = new AccountApiFactory();
+        using var client = factory.CreateClient();
+        using var unknown = await client.PostAsJsonAsync("/api/account-security/email-verification/resend", new { email = "missing@example.test" });
+        using var known = await client.PostAsJsonAsync("/api/account-security/email-verification/resend", new { email = factory.User.Email });
+        Assert.Equal(HttpStatusCode.Accepted, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, known.StatusCode);
+        using var confirmed = await client.PostAsJsonAsync("/api/account-security/email-verification/confirm", new { token = factory.Email.LastToken() });
+        Assert.Equal(HttpStatusCode.NoContent, confirmed.StatusCode);
+    }
+
     [Fact]
     public async Task Email_verification_token_is_single_use()
     {
