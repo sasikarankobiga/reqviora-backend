@@ -1207,6 +1207,13 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTimeOffset?>("DisabledAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DisabledReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1218,6 +1225,11 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .HasColumnType("nvarchar(320)");
 
                     b.Property<bool>("EmailVerified")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsDisabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bit")
                         .HasDefaultValue(false);

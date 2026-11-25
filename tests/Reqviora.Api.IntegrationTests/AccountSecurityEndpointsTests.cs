@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Authentication;
@@ -399,6 +400,67 @@ public sealed class AccountSecurityEndpointsTests
             Assert.Equal(HttpStatusCode.TooManyRequests, response!.StatusCode);
     }
 
+    [Fact]
+    public async Task Admin_dashboard_users_projects_and_audits_are_role_protected_and_paginated()
+    {
+        using var adminFactory = new AccountApiFactory(admin: true);
+        adminFactory.VerifySeedUser();
+        adminFactory.SeedAdminData();
+        using var anonymous = adminFactory.CreateClient();
+        using var unauthorized = await anonymous.GetAsync("/api/admin/dashboard");
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+
+        using var nonAdminFactory = new AccountApiFactory();
+        nonAdminFactory.VerifySeedUser();
+        using var nonAdmin = nonAdminFactory.AuthenticatedClient();
+        using var forbidden = await nonAdmin.GetAsync("/api/admin/dashboard");
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        using var admin = adminFactory.AuthenticatedClient();
+        using var dashboard = await admin.GetAsync("/api/admin/dashboard");
+        Assert.True(dashboard.StatusCode == HttpStatusCode.OK, await dashboard.Content.ReadAsStringAsync());
+        using var users = await admin.GetAsync("/api/admin/users?page=1&pageSize=10&status=enabled");
+        Assert.Equal(HttpStatusCode.OK, users.StatusCode);
+        Assert.Contains("account@example.test", await users.Content.ReadAsStringAsync());
+        using var projects = await admin.GetAsync("/api/admin/projects?page=1&pageSize=10");
+        Assert.True(projects.StatusCode == HttpStatusCode.OK, await projects.Content.ReadAsStringAsync());
+        Assert.Contains("Admin project", await projects.Content.ReadAsStringAsync());
+        using var audits = await admin.GetAsync("/api/admin/audit-events?page=1&pageSize=10");
+        Assert.True(audits.StatusCode == HttpStatusCode.OK, await audits.Content.ReadAsStringAsync());
+        using var invalidPage = await admin.GetAsync("/api/admin/users?pageSize=101");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPage.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_disable_revokes_sessions_blocks_login_and_prevents_self_disable()
+    {
+        using var factory = new AccountApiFactory(admin: true);
+        factory.VerifySeedUser();
+        var target = factory.AddRegularUserWithRefresh();
+        using var targetClient = factory.AuthenticatedClient(target.User);
+        using var admin = factory.AuthenticatedClient();
+
+        using var disabled = await admin.PutAsJsonAsync($"/api/admin/users/{target.User.Id}/status",
+            new { disabled = true, reason = "Security investigation" });
+
+        Assert.Equal(HttpStatusCode.OK, disabled.StatusCode);
+        var state = factory.ReadUserAndToken(target.User.Id);
+        Assert.True(state.User.IsDisabled);
+        Assert.Equal("Security investigation", state.User.DisabledReason);
+        Assert.NotNull(state.RefreshToken.RevokedAt);
+        using var revokedAccess = await targetClient.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedAccess.StatusCode);
+        using var login = await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new
+        {
+            email = target.User.Email,
+            password = "Regular-Password-123!"
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, login.StatusCode);
+        using var selfDisable = await admin.PutAsJsonAsync($"/api/admin/users/{factory.User.Id}/status",
+            new { disabled = true, reason = "Mistake" });
+        Assert.Equal(HttpStatusCode.BadRequest, selfDisable.StatusCode);
+    }
+
     private sealed class AccountApiFactory : WebApplicationFactory<Program>
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
@@ -512,6 +574,63 @@ public sealed class AccountSecurityEndpointsTests
             return supervisor;
         }
 
+        public (User User, RefreshToken RefreshToken) AddRegularUserWithRefresh()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            var user = new User
+            {
+                Email = "regular@example.test",
+                NormalizedEmail = "REGULAR@EXAMPLE.TEST",
+                DisplayName = "Regular User",
+                EmailVerified = true
+            };
+            user.PasswordHash = new PasswordHasher<User>().HashPassword(user, "Regular-Password-123!");
+            var refresh = new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())),
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1)
+            };
+            db.Users.Add(user);
+            db.RefreshTokens.Add(refresh);
+            db.SaveChanges();
+            return (user, refresh);
+        }
+
+        public (User User, RefreshToken RefreshToken) ReadUserAndToken(Guid userId)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            return (db.Users.AsNoTracking().Single(user => user.Id == userId),
+                db.RefreshTokens.AsNoTracking().Single(token => token.UserId == userId));
+        }
+
+        public void SeedAdminData()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            var workspace = new Workspace { Name = "Admin workspace", OwnerUserId = User.Id };
+            db.Workspaces.Add(workspace);
+            db.Projects.Add(new Project
+            {
+                Name = "Admin project",
+                Description = "Visible to administrators",
+                OwnerId = User.Id,
+                WorkspaceId = workspace.Id
+            });
+            db.AuditEvents.Add(new AuditEvent
+            {
+                UserId = User.Id,
+                Method = "GET",
+                Path = "/seed",
+                StatusCode = 200,
+                IpAddress = "127.0.0.1",
+                OccurredAt = DateTimeOffset.UtcNow
+            });
+            db.SaveChanges();
+        }
+
         public void ExpireAccountTokens()
         {
             using var scope = Services.CreateScope();
@@ -529,6 +648,7 @@ public sealed class AccountSecurityEndpointsTests
             if (_admin) builder.UseSetting("Security:AdminEmails:1", "supervisor@example.test");
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<IHostedService>();
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<ReqvioraDbContext>>();
                 services.RemoveAll<ReqvioraDbContext>();

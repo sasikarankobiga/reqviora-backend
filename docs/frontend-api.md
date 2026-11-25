@@ -127,6 +127,8 @@ An approval requires a passing validation run for the exact current draft versio
 
 Swagger is available at `/swagger` in Development. Apply the EF migrations and the matching PostgreSQL `.sql` or SQL Server `.sqlserver.sql` Requirement Review schema before using all endpoints.
 
+Administrator Web uses the role-protected `/api/admin` surface documented in `admin-integration.md`. Account disable and role changes revoke existing sessions. These routes are not available to ordinary project owners, editors or viewers.
+
 ## Input intelligence and feature-gated MCP V1 scope
 
 | Method | Path | Purpose |

@@ -114,13 +114,15 @@ public static class DependencyInjection
                             {
                                 user.SessionVersion,
                                 user.Email,
+                                user.IsDisabled,
                                 RoleName = user.RoleId == null ? null : db.Roles
                                     .Where(role => role.Id == user.RoleId)
                                     .Select(role => role.Name)
                                     .SingleOrDefault()
                             })
                             .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
-                        if (state is null || !SessionFingerprint.Matches(presented, state.SessionVersion))
+                        if (state is null || state.IsDisabled ||
+                            !SessionFingerprint.Matches(presented, state.SessionVersion))
                         {
                             context.Fail("The session is no longer valid.");
                             return;

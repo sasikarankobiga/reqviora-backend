@@ -30,6 +30,12 @@ public sealed class AuthService(
             return Result<AuthResponseDto>.Failure("Invalid email or password.");
         }
 
+        if (user.IsDisabled)
+        {
+            await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, false, false, cancellationToken);
+            return Result<AuthResponseDto>.Failure("Invalid email or password.");
+        }
+
         var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
         if (verification == PasswordVerificationResult.Failed)
         {
@@ -86,7 +92,8 @@ public sealed class AuthService(
         var tokenHash = tokens.HashRefreshToken(request.RefreshToken);
         var existingToken = await users.GetRefreshTokenByHashAsync(tokenHash, cancellationToken);
         var now = timeProvider.GetUtcNow();
-        if (existingToken is null || !existingToken.IsActive(now) || !existingToken.User.EmailVerified)
+        if (existingToken is null || !existingToken.IsActive(now) || !existingToken.User.EmailVerified ||
+            existingToken.User.IsDisabled)
             return Result<AuthResponseDto>.Failure("Invalid or expired refresh token.");
 
         // Existing refresh tokens do not record MFA provenance. Require a new MFA login for administrators.

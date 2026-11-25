@@ -61,6 +61,8 @@ public class ReqvioraDbContext : DbContext
             entity.Property(user => user.DisplayName).HasMaxLength(200).IsRequired();
             entity.Property(user => user.EmailVerified).HasDefaultValue(false);
             entity.Property(user => user.SessionVersion).HasDefaultValue(0);
+            entity.Property(user => user.IsDisabled).HasDefaultValue(false);
+            entity.Property(user => user.DisabledReason).HasMaxLength(500);
             entity.Property(user => user.RecoveryCodeHashes).IsConcurrencyToken();
         });
 
