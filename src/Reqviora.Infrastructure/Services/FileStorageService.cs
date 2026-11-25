@@ -43,6 +43,23 @@ public sealed class FileStorageService(
     public Task<Stream> OpenReadAsync(string storagePath, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var path = ResolvePrivatePath(storagePath);
+        Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return Task.FromResult(stream);
+    }
+
+    public Task DeleteAsync(string storagePath, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = ResolvePrivatePath(storagePath);
+        if (File.Exists(path))
+            File.Delete(path);
+        return Task.CompletedTask;
+    }
+
+    private string ResolvePrivatePath(string storagePath)
+    {
         var root = Path.GetFullPath(options.Value.RootPath);
         if (string.IsNullOrWhiteSpace(storagePath) || Path.IsPathRooted(storagePath))
             throw new InvalidDataException("Invalid storage path.");
@@ -50,9 +67,7 @@ public sealed class FileStorageService(
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         if (!path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison))
             throw new InvalidDataException("Invalid storage path.");
-        Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return Task.FromResult(stream);
+        return path;
     }
 
 }

@@ -26,6 +26,8 @@ public class ReqvioraDbContext : DbContext
     public DbSet<LoginAudit> LoginAudits => Set<LoginAudit>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<AiJob> AiJobs => Set<AiJob>();
+    public DbSet<VoiceTranscript> VoiceTranscripts => Set<VoiceTranscript>();
+    public DbSet<VoiceTranscriptSegment> VoiceTranscriptSegments => Set<VoiceTranscriptSegment>();
 
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
@@ -181,6 +183,29 @@ public class ReqvioraDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<User>().WithMany().HasForeignKey(job => job.OwnerId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<VoiceTranscript>(entity =>
+        {
+            entity.HasIndex(transcript => new { transcript.ProjectId, transcript.CreatedAt });
+            entity.HasIndex(transcript => transcript.AudioFileId).IsUnique();
+            entity.Property(transcript => transcript.AudioStoragePath).HasMaxLength(1000).IsRequired();
+            entity.Property(transcript => transcript.MediaType).HasMaxLength(100).IsRequired();
+            entity.Property(transcript => transcript.LanguageCode).HasMaxLength(10).IsRequired();
+            entity.Property(transcript => transcript.OriginalText).IsRequired();
+            entity.Property(transcript => transcript.EditableText).IsRequired();
+            entity.Property(transcript => transcript.Status).HasMaxLength(30).HasDefaultValue("draft").IsRequired();
+            entity.Property(transcript => transcript.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(transcript => transcript.ProjectId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(transcript => transcript.ReviewedBy)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<VoiceTranscriptSegment>(entity =>
+        {
+            entity.HasIndex(segment => new { segment.VoiceTranscriptId, segment.Sequence }).IsUnique();
+            entity.Property(segment => segment.Text).IsRequired();
+            entity.HasOne<VoiceTranscript>().WithMany().HasForeignKey(segment => segment.VoiceTranscriptId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

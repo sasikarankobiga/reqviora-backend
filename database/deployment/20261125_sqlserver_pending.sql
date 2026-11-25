@@ -24,6 +24,7 @@ END;
 
 COMMIT;
 GO
+
 BEGIN TRANSACTION;
 IF NOT EXISTS (
     SELECT * FROM [__EFMigrationsHistory]
@@ -241,6 +242,99 @@ IF NOT EXISTS (
 BEGIN
     INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
     VALUES (N'20261125090548_PersistDocumentIntelligence', N'10.0.15');
+END;
+
+COMMIT;
+GO
+
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    CREATE TABLE [VoiceTranscripts] (
+        [Id] uniqueidentifier NOT NULL,
+        [ProjectId] uniqueidentifier NOT NULL,
+        [AudioFileId] uniqueidentifier NOT NULL,
+        [AudioStoragePath] nvarchar(1000) NOT NULL,
+        [MediaType] nvarchar(100) NOT NULL,
+        [SizeBytes] bigint NOT NULL,
+        [DurationSeconds] int NOT NULL,
+        [LanguageCode] nvarchar(10) NOT NULL,
+        [OriginalText] nvarchar(max) NOT NULL,
+        [EditableText] nvarchar(max) NOT NULL,
+        [Revision] int NOT NULL,
+        [Status] nvarchar(30) NOT NULL DEFAULT N'draft',
+        [ReviewedAt] datetimeoffset NULL,
+        [ReviewedBy] uniqueidentifier NULL,
+        [ConcurrencyToken] uniqueidentifier NOT NULL,
+        [CreatedAt] datetimeoffset NOT NULL,
+        [CreatedBy] nvarchar(max) NULL,
+        [LastModifiedAt] datetimeoffset NULL,
+        [LastModifiedBy] nvarchar(max) NULL,
+        CONSTRAINT [PK_VoiceTranscripts] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_VoiceTranscripts_Projects_ProjectId] FOREIGN KEY ([ProjectId]) REFERENCES [Projects] ([Id]) ON DELETE CASCADE,
+        CONSTRAINT [FK_VoiceTranscripts_Users_ReviewedBy] FOREIGN KEY ([ReviewedBy]) REFERENCES [Users] ([Id])
+    );
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    CREATE TABLE [VoiceTranscriptSegments] (
+        [Id] uniqueidentifier NOT NULL,
+        [VoiceTranscriptId] uniqueidentifier NOT NULL,
+        [Sequence] int NOT NULL,
+        [StartMs] bigint NOT NULL,
+        [EndMs] bigint NOT NULL,
+        [Text] nvarchar(max) NOT NULL,
+        CONSTRAINT [PK_VoiceTranscriptSegments] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_VoiceTranscriptSegments_VoiceTranscripts_VoiceTranscriptId] FOREIGN KEY ([VoiceTranscriptId]) REFERENCES [VoiceTranscripts] ([Id]) ON DELETE CASCADE
+    );
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_VoiceTranscripts_AudioFileId] ON [VoiceTranscripts] ([AudioFileId]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    CREATE INDEX [IX_VoiceTranscripts_ProjectId_CreatedAt] ON [VoiceTranscripts] ([ProjectId], [CreatedAt]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    CREATE INDEX [IX_VoiceTranscripts_ReviewedBy] ON [VoiceTranscripts] ([ReviewedBy]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_VoiceTranscriptSegments_VoiceTranscriptId_Sequence] ON [VoiceTranscriptSegments] ([VoiceTranscriptId], [Sequence]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125095704_PersistVoiceTranscripts'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261125095704_PersistVoiceTranscripts', N'10.0.15');
 END;
 
 COMMIT;

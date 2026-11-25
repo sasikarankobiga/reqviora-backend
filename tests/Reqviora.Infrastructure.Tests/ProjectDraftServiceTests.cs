@@ -257,6 +257,8 @@ public sealed class ProjectDraftServiceTests
         Assert.Contains("CREATE TABLE [AiJobs]", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("IX_AiJobs_OwnerId_ProjectId_IdempotencyKey", sql);
         Assert.Contains("CREATE TABLE [ProjectDocumentSegments]", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE [VoiceTranscripts]", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("CREATE TABLE [VoiceTranscriptSegments]", sql, StringComparison.OrdinalIgnoreCase);
         Assert.False(db.Database.HasPendingModelChanges());
     }
 
@@ -272,7 +274,7 @@ public sealed class ProjectDraftServiceTests
         {
             "Users", "Projects", "ProjectMembers", "ProjectDrafts", "DesignDraftVersions",
             "ApprovedRevisions", "ExportRecords", "AuditEvents", "LoginAudits", "AccountActionTokens", "AiJobs",
-            "ProjectDocumentSegments"
+            "ProjectDocumentSegments", "VoiceTranscripts", "VoiceTranscriptSegments"
         })
         {
             Assert.Contains($"'{table}'", sql, StringComparison.Ordinal);

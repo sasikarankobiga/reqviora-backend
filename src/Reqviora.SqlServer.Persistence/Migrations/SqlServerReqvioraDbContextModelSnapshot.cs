@@ -1311,6 +1311,121 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.ToTable("ValidationRuns");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.VoiceTranscript", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AudioFileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AudioStoragePath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EditableText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("LanguageCode")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTimeOffset?>("LastModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OriginalText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("draft");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AudioFileId")
+                        .IsUnique();
+
+                    b.HasIndex("ReviewedBy");
+
+                    b.HasIndex("ProjectId", "CreatedAt");
+
+                    b.ToTable("VoiceTranscripts");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.VoiceTranscriptSegment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("EndMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("int");
+
+                    b.Property<long>("StartMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("VoiceTranscriptId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VoiceTranscriptId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("VoiceTranscriptSegments");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.Workspace", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1683,6 +1798,29 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DraftVersionId")
                         .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.VoiceTranscript", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.VoiceTranscriptSegment", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.VoiceTranscript", null)
+                        .WithMany()
+                        .HasForeignKey("VoiceTranscriptId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 

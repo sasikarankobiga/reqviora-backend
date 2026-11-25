@@ -15,6 +15,7 @@ BEGIN
     END IF;
 END $EF$;
 COMMIT;
+
 START TRANSACTION;
 
 DO $EF$
@@ -247,6 +248,116 @@ BEGIN
     IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125090542_PersistDocumentIntelligence') THEN
     INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
     VALUES ('20261125090542_PersistDocumentIntelligence', '10.0.15');
+    END IF;
+END $EF$;
+COMMIT;
+
+START TRANSACTION;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    CREATE TABLE "VoiceTranscripts" (
+        "Id" uuid NOT NULL,
+        "ProjectId" uuid NOT NULL,
+        "AudioFileId" uuid NOT NULL,
+        "AudioStoragePath" character varying(1000) NOT NULL,
+        "MediaType" character varying(100) NOT NULL,
+        "SizeBytes" bigint NOT NULL,
+        "DurationSeconds" integer NOT NULL,
+        "LanguageCode" character varying(10) NOT NULL,
+        "OriginalText" text NOT NULL,
+        "EditableText" text NOT NULL,
+        "Revision" integer NOT NULL,
+        "Status" character varying(30) NOT NULL DEFAULT 'draft',
+        "ReviewedAt" timestamp with time zone,
+        "ReviewedBy" uuid,
+        "ConcurrencyToken" uuid NOT NULL,
+        "CreatedAt" timestamp with time zone NOT NULL,
+        "CreatedBy" text,
+        "LastModifiedAt" timestamp with time zone,
+        "LastModifiedBy" text,
+        CONSTRAINT "PK_VoiceTranscripts" PRIMARY KEY ("Id"),
+        CONSTRAINT "FK_VoiceTranscripts_Projects_ProjectId" FOREIGN KEY ("ProjectId") REFERENCES "Projects" ("Id") ON DELETE CASCADE,
+        CONSTRAINT "FK_VoiceTranscripts_Users_ReviewedBy" FOREIGN KEY ("ReviewedBy") REFERENCES "Users" ("Id")
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    CREATE TABLE "VoiceTranscriptSegments" (
+        "Id" uuid NOT NULL,
+        "VoiceTranscriptId" uuid NOT NULL,
+        "Sequence" integer NOT NULL,
+        "StartMs" bigint NOT NULL,
+        "EndMs" bigint NOT NULL,
+        "Text" text NOT NULL,
+        CONSTRAINT "PK_VoiceTranscriptSegments" PRIMARY KEY ("Id"),
+        CONSTRAINT "FK_VoiceTranscriptSegments_VoiceTranscripts_VoiceTranscriptId" FOREIGN KEY ("VoiceTranscriptId") REFERENCES "VoiceTranscripts" ("Id") ON DELETE CASCADE
+    );
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    CREATE UNIQUE INDEX "IX_VoiceTranscripts_AudioFileId" ON "VoiceTranscripts" ("AudioFileId");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    CREATE INDEX "IX_VoiceTranscripts_ProjectId_CreatedAt" ON "VoiceTranscripts" ("ProjectId", "CreatedAt");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    CREATE INDEX "IX_VoiceTranscripts_ReviewedBy" ON "VoiceTranscripts" ("ReviewedBy");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    CREATE UNIQUE INDEX "IX_VoiceTranscriptSegments_VoiceTranscriptId_Sequence" ON "VoiceTranscriptSegments" ("VoiceTranscriptId", "Sequence");
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    ALTER TABLE public."VoiceTranscripts" ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE public."VoiceTranscriptSegments" ENABLE ROW LEVEL SECURITY;
+    REVOKE ALL ON TABLE public."VoiceTranscripts" FROM PUBLIC;
+    REVOKE ALL ON TABLE public."VoiceTranscriptSegments" FROM PUBLIC;
+    DO $private_voice_transcripts$
+    DECLARE role_name text;
+    BEGIN
+        FOR role_name IN SELECT rolname::text FROM pg_catalog.pg_roles
+            WHERE rolname IN ('anon', 'authenticated', 'service_role')
+        LOOP
+            EXECUTE format(
+                'REVOKE ALL ON TABLE public.%I FROM %I',
+                'VoiceTranscripts', role_name);
+            EXECUTE format(
+                'REVOKE ALL ON TABLE public.%I FROM %I',
+                'VoiceTranscriptSegments', role_name);
+        END LOOP;
+    END;
+    $private_voice_transcripts$;
+    END IF;
+END $EF$;
+
+DO $EF$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM "__EFMigrationsHistory" WHERE "MigrationId" = '20261125095515_PersistVoiceTranscripts') THEN
+    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+    VALUES ('20261125095515_PersistVoiceTranscripts', '10.0.15');
     END IF;
 END $EF$;
 COMMIT;

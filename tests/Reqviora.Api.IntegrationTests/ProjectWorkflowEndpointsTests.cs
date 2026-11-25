@@ -16,6 +16,7 @@ using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.RequirementReview;
+using Reqviora.Application.Features.VoiceProcessing;
 using Reqviora.Infrastructure.Services;
 using Reqviora.Application.Features.Projects.DTOs;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
@@ -237,6 +238,89 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var response = await client.PostAsync(
             $"/api/projects/{_factory.Project.Id}/input-intelligence/voice/transcribe", form);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Voice_transcript_persists_supports_review_and_becomes_immutable()
+    {
+        using var factory = new WorkflowApiFactory(enableAiForTest: true);
+        using var owner = CreateClient(factory.Owner, factory);
+        using var outsider = CreateClient(factory.OtherUser, factory);
+        using var form = VoiceForm(consent: true);
+        var root = $"/api/projects/{factory.Project.Id}/input-intelligence/voice/transcripts";
+
+        using var transcribed = await owner.PostAsync(
+            $"/api/projects/{factory.Project.Id}/input-intelligence/voice/transcribe", form);
+        Assert.Equal(HttpStatusCode.OK, transcribed.StatusCode);
+        var draft = await transcribed.Content.ReadFromJsonAsync<TranscriptDraft>();
+        Assert.NotNull(draft);
+        Assert.Equal(1, draft.Revision);
+        Assert.Equal(1, factory.Storage.Saves);
+
+        using var denied = await outsider.GetAsync($"{root}/{draft.TranscriptId}");
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var fetched = await owner.GetAsync($"{root}/{draft.TranscriptId}");
+        var initial = await fetched.Content.ReadFromJsonAsync<VoiceTranscriptPayload>();
+        Assert.Equal("draft", initial!.Status);
+        Assert.Single(initial.Segments);
+
+        using var edited = await owner.PutAsJsonAsync($"{root}/{draft.TranscriptId}",
+            new { expectedRevision = 1, editedText = "Edited Tamil and English transcript" });
+        var edit = await edited.Content.ReadFromJsonAsync<VoiceTranscriptPayload>();
+        Assert.Equal(2, edit!.Revision);
+        Assert.Equal("Edited Tamil and English transcript", edit.EditableText);
+        using var stale = await owner.PutAsJsonAsync($"{root}/{draft.TranscriptId}",
+            new { expectedRevision = 1, editedText = "Stale edit" });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+
+        using var reviewed = await owner.PostAsJsonAsync($"{root}/{draft.TranscriptId}/review",
+            new { expectedRevision = 2, acknowledgedByUser = true });
+        var review = await reviewed.Content.ReadFromJsonAsync<VoiceTranscriptPayload>();
+        Assert.Equal("reviewed", review!.Status);
+        Assert.Equal(3, review.Revision);
+        Assert.NotNull(review.ReviewedAt);
+        using var immutable = await owner.PutAsJsonAsync($"{root}/{draft.TranscriptId}",
+            new { expectedRevision = 3, editedText = "Must not change" });
+        Assert.Equal(HttpStatusCode.Conflict, immutable.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+        Assert.Equal("reviewed", (await db.VoiceTranscripts.SingleAsync()).Status);
+        Assert.Single(await db.VoiceTranscriptSegments.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Failed_voice_provider_removes_uncommitted_private_audio()
+    {
+        using var factory = new WorkflowApiFactory(enableAiForTest: true);
+        factory.Voice.FailNext = true;
+        using var owner = CreateClient(factory.Owner, factory);
+        using var form = VoiceForm(consent: true);
+
+        using var response = await owner.PostAsync(
+            $"/api/projects/{factory.Project.Id}/input-intelligence/voice/transcribe", form);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(1, factory.Storage.Deletes);
+        using var scope = factory.Services.CreateScope();
+        Assert.Empty(scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>().VoiceTranscripts);
+    }
+
+    [Fact]
+    public async Task Mismatched_voice_provider_source_is_rejected_and_audio_is_removed()
+    {
+        using var factory = new WorkflowApiFactory(enableAiForTest: true);
+        factory.Voice.MismatchSourceNext = true;
+        using var owner = CreateClient(factory.Owner, factory);
+        using var form = VoiceForm(consent: true);
+
+        using var response = await owner.PostAsync(
+            $"/api/projects/{factory.Project.Id}/input-intelligence/voice/transcribe", form);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal(1, factory.Storage.Deletes);
+        using var scope = factory.Services.CreateScope();
+        Assert.Empty(scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>().VoiceTranscripts);
     }
 
     [Fact]
@@ -872,7 +956,30 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         return form;
     }
 
+    private static MultipartFormDataContent VoiceForm(bool consent)
+    {
+        var form = new MultipartFormDataContent
+        {
+            { new ByteArrayContent([0x52, 0x49, 0x46, 0x46]), "audio", "voice.wav" },
+            { new StringContent("ta-LK"), "languageCode" },
+            { new StringContent("5"), "durationSeconds" },
+            { new StringContent(consent.ToString()), "consentGranted" }
+        };
+        form.First().Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+        return form;
+    }
+
     private sealed record AiJobCreatedPayload(Guid Id, string State, bool Created);
+    private sealed record VoiceTranscriptPayload(
+        Guid TranscriptId,
+        Guid AudioFileId,
+        string LanguageCode,
+        string OriginalText,
+        string EditableText,
+        int Revision,
+        IReadOnlyList<TranscriptSegment> Segments,
+        string Status,
+        DateTimeOffset? ReviewedAt);
 
     private sealed class WorkflowApiFactory : WebApplicationFactory<Program>
     {
@@ -883,6 +990,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         public Workspace Workspace { get; }
         public Project Project { get; }
         public TestFileStorage Storage { get; } = new();
+        public TestVoiceTranscriber Voice { get; } = new();
 
         private readonly bool _enableAiForTest;
         public TestCandidateStore CandidateStore { get; } = new();
@@ -932,6 +1040,8 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                     services.PostConfigure<AiOptions>(options => options.Enabled = true);
                     services.RemoveAll<IStructuredAiProvider>();
                     services.AddSingleton<IStructuredAiProvider>(new TestExtractionProvider());
+                    services.RemoveAll<IVoiceTranscriber>();
+                    services.AddSingleton<IVoiceTranscriber>(Voice);
                 }
             });
         }
@@ -967,6 +1077,30 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                     {"contractVersion":"1.0","candidates":[{"id":"REQ-LOGIN","title":"Login","description":"Users need sign in","languageCode":"en","confidence":0.9,"evidence":[{"sourceId":"SRC-INPUT","locator":"line 1","quote":"Users need sign in"}]}]}
                     """;
                 return Task.FromResult(new AiProviderResponse(request.RequestId, AiRunStatus.Completed, json, null));
+            }
+        }
+
+        public sealed class TestVoiceTranscriber : IVoiceTranscriber
+        {
+            public bool FailNext { get; set; }
+            public bool MismatchSourceNext { get; set; }
+
+            public Task<TranscriptDraft> TranscribeAsync(
+                Reqviora.Application.Features.Documents.VoiceInputRequest request,
+                Stream audioContent,
+                CancellationToken cancellationToken = default)
+            {
+                if (FailNext)
+                {
+                    FailNext = false;
+                    throw new InvalidDataException("Simulated provider failure.");
+                }
+                const string text = "வணக்கம். User needs secure login.";
+                var audioFileId = MismatchSourceNext ? Guid.NewGuid() : request.AudioFileId;
+                MismatchSourceNext = false;
+                return Task.FromResult(new TranscriptDraft(
+                    Guid.NewGuid(), audioFileId, request.LanguageCode, text, text, 1,
+                    [new TranscriptSegment(0, 5000, text)]));
             }
         }
 
@@ -1017,6 +1151,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         {
             private readonly Dictionary<string, byte[]> _files = new();
             public int Saves { get; private set; }
+            public int Deletes { get; private set; }
             public bool RejectNext { get; set; }
 
             public async Task<string> SaveAsync(
@@ -1042,6 +1177,14 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return Task.FromResult<Stream>(new MemoryStream(_files[storagePath], writable: false));
+            }
+
+            public Task DeleteAsync(string storagePath, CancellationToken cancellationToken = default)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _files.Remove(storagePath);
+                Deletes++;
+                return Task.CompletedTask;
             }
         }
     }

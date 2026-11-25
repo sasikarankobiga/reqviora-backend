@@ -71,6 +71,19 @@ public sealed class FileStorageServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidDataException>(() => service.OpenReadAsync(path));
     }
 
+    [Fact]
+    public async Task Delete_removes_only_a_private_relative_file()
+    {
+        var service = Service(new StubScanner(FileThreatScanStatus.Clean), requireAntivirus: true);
+        await using var upload = new MemoryStream([1, 2, 3]);
+        var path = await service.SaveAsync(upload, "temporary.txt");
+
+        await service.DeleteAsync(path);
+
+        Assert.Empty(Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories));
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.DeleteAsync("../outside.txt"));
+    }
+
     private FileStorageService Service(IFileThreatScanner scanner, bool requireAntivirus) => new(
         Options.Create(new StorageOptions
         {
