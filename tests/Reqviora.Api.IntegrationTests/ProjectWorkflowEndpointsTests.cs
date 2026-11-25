@@ -44,6 +44,24 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var client = _factory.CreateClient();
         using var response = await client.GetAsync(string.Format(route, _factory.Project.Id));
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.Contains("X-Correlation-ID"));
+    }
+
+    [Fact]
+    public async Task Authorization_exception_is_problem_details_and_is_audited_with_final_status()
+    {
+        using var client = CreateClient(_factory.OtherUser);
+        var path = $"/api/projects/{_factory.Project.Id}/drafts/current";
+
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.TryGetValues("X-Correlation-ID", out var values));
+        Assert.Single(values);
+        Assert.Contains(_factory.AuditEvents(), audit =>
+            audit.UserId == _factory.OtherUser.Id && audit.Path == path && audit.StatusCode == 403);
     }
 
     [Theory]
@@ -837,6 +855,13 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             base.Dispose(disposing);
             if (disposing)
                 _connection.Dispose();
+        }
+
+        public AuditEvent[] AuditEvents()
+        {
+            using var scope = Services.CreateScope();
+            return scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>()
+                .AuditEvents.AsNoTracking().ToArray();
         }
 
         private static User NewUser(string email) => new()

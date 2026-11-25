@@ -1,5 +1,7 @@
+using System.Data;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Reqviora.Application.Features.SecondBrain;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
@@ -82,46 +84,49 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
         CancellationToken cancellationToken = default)
     {
         var project = await ProjectOwnerAccess.RequireAsync(db, projectId, actorId, cancellationToken);
-        var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
-        EnsureOpen(draft);
-        var version = await GetCurrentVersionAsync(draft, cancellationToken);
-        var validation = await db.ValidationRuns.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == validationRunId && x.DraftVersionId == version.Id, cancellationToken);
-
-        if (validation is null || !validation.Passed || version.BlueprintJson is null)
-            throw new InvalidOperationException("Approval requires a successful validation run for the current draft version.");
-
-        var blueprint = JsonSerializer.Deserialize<BlueprintDocument>(version.BlueprintJson, DraftBlueprint.Json)
-            ?? throw new InvalidOperationException("The validated draft has no Blueprint.");
-        await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
-        var approvedAt = DateTimeOffset.UtcNow;
-        var revision = new ApprovedRevision
+        return await WithProjectReviewLockAsync(projectId, async () =>
         {
-            ProjectId = projectId,
-            DraftVersionId = version.Id,
-            ValidationRunId = validation.Id,
-            ApprovedBy = actorId,
-            ApprovedAt = approvedAt
-        };
-        revision.SnapshotJson = JsonSerializer.Serialize(new ApprovedProjectSnapshot(
-            projectId, project.Name, project.Description, project.OwnerId, revision.Id,
-            version.Version, version.BasedOnRevisionId, actorId, approvedAt,
-            validation.Id, validation.ValidatedAt, version.DraftJson, blueprint), DraftBlueprint.Json);
-        db.ApprovedRevisions.Add(revision);
-        db.Approvals.Add(new Approval
-        {
-            ApprovedRevisionId = revision.Id,
-            ProjectId = projectId,
-            ReviewerId = actorId,
-            Status = "Approved",
-            CreatedAt = approvedAt
-        });
-        draft.ApprovedRevisionId = revision.Id;
-        RotateToken(draft);
+            var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
+            EnsureOpen(draft);
+            var version = await GetCurrentVersionAsync(draft, cancellationToken);
+            var validation = await db.ValidationRuns.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == validationRunId && x.DraftVersionId == version.Id, cancellationToken);
 
-        // The snapshot, approval audit and concurrency-checked draft update share one EF transaction.
-        await PersistDraftAsync(cancellationToken);
-        return revision;
+            if (validation is null || !validation.Passed || version.BlueprintJson is null)
+                throw new InvalidOperationException("Approval requires a successful validation run for the current draft version.");
+
+            var blueprint = JsonSerializer.Deserialize<BlueprintDocument>(version.BlueprintJson, DraftBlueprint.Json)
+                ?? throw new InvalidOperationException("The validated draft has no Blueprint.");
+            await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
+            var approvedAt = DateTimeOffset.UtcNow;
+            var revision = new ApprovedRevision
+            {
+                ProjectId = projectId,
+                DraftVersionId = version.Id,
+                ValidationRunId = validation.Id,
+                ApprovedBy = actorId,
+                ApprovedAt = approvedAt
+            };
+            revision.SnapshotJson = JsonSerializer.Serialize(new ApprovedProjectSnapshot(
+                projectId, project.Name, project.Description, project.OwnerId, revision.Id,
+                version.Version, version.BasedOnRevisionId, actorId, approvedAt,
+                validation.Id, validation.ValidatedAt, version.DraftJson, blueprint), DraftBlueprint.Json);
+            db.ApprovedRevisions.Add(revision);
+            db.Approvals.Add(new Approval
+            {
+                ApprovedRevisionId = revision.Id,
+                ProjectId = projectId,
+                ReviewerId = actorId,
+                Status = "Approved",
+                CreatedAt = approvedAt
+            });
+            draft.ApprovedRevisionId = revision.Id;
+            RotateToken(draft);
+
+            // The snapshot, approval audit and concurrency-checked draft update share one EF transaction.
+            await PersistDraftAsync(cancellationToken);
+            return revision;
+        }, cancellationToken);
     }
 
     public async Task<ProjectDraft> StartAfterApprovalAsync(
@@ -154,48 +159,57 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
     {
         await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
         RequireDraftJson(draftJson);
-        if (blueprint is not null)
-            await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
         var blueprintForVersion = blueprint;
         var blueprintJson = blueprint is null ? null : JsonSerializer.Serialize(blueprint, DraftBlueprint.Json);
         if (blueprintJson?.Length > 2_000_000)
             throw new ArgumentException("Blueprint JSON exceeds the supported size.", nameof(blueprint));
 
-        var draft = await db.ProjectDrafts.SingleOrDefaultAsync(x => x.ProjectId == projectId, cancellationToken);
-
-        if (draft is null)
+        async Task<ProjectDraft> PersistAsync()
         {
-            if (expectedToken.HasValue)
-                throw new DbUpdateConcurrencyException("The draft no longer exists.");
+            if (blueprint is not null)
+                await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
 
-            draft = new ProjectDraft { ProjectId = projectId };
-            db.ProjectDrafts.Add(draft);
-        }
-        else
-        {
-            RequireToken(draft, expectedToken);
-            EnsureOpen(draft);
-            if (blueprint is null)
+            var draft = await db.ProjectDrafts.SingleOrDefaultAsync(x => x.ProjectId == projectId, cancellationToken);
+
+            if (draft is null)
             {
-                var currentVersion = await GetCurrentVersionAsync(draft, cancellationToken);
-                blueprintJson = currentVersion.BlueprintJson;
-                blueprintForVersion = blueprintJson is null
-                    ? null
-                    : JsonSerializer.Deserialize<BlueprintDocument>(blueprintJson, DraftBlueprint.Json)
-                        ?? throw new InvalidDataException("The current Blueprint could not be restored.");
+                if (expectedToken.HasValue)
+                    throw new DbUpdateConcurrencyException("The draft no longer exists.");
+
+                draft = new ProjectDraft { ProjectId = projectId };
+                db.ProjectDrafts.Add(draft);
             }
-            draft.Version = checked(draft.Version + 1);
+            else
+            {
+                RequireToken(draft, expectedToken);
+                EnsureOpen(draft);
+                if (blueprint is null)
+                {
+                    var currentVersion = await GetCurrentVersionAsync(draft, cancellationToken);
+                    blueprintJson = currentVersion.BlueprintJson;
+                    blueprintForVersion = blueprintJson is null
+                        ? null
+                        : JsonSerializer.Deserialize<BlueprintDocument>(blueprintJson, DraftBlueprint.Json)
+                            ?? throw new InvalidDataException("The current Blueprint could not be restored.");
+                }
+                draft.Version = checked(draft.Version + 1);
+            }
+
+            draft.DraftJson = draftJson;
+            RotateToken(draft);
+            AddDraftVersion(draft, blueprintForVersion, blueprintJson);
+            await PersistDraftAsync(cancellationToken);
+            return draft;
         }
 
-        draft.DraftJson = draftJson;
-        RotateToken(draft);
-        AddDraftVersion(draft, blueprintForVersion, blueprintJson);
-        await PersistDraftAsync(cancellationToken);
-        return draft;
+        return blueprint is null
+            ? await PersistAsync()
+            : await WithProjectReviewLockAsync(projectId, PersistAsync, cancellationToken);
     }
 
     // Review storage is authoritative; client-supplied confirmation fields are not proof.
-    // Read checks deliberately fail closed. Cross-store atomic locking is not provided here.
+    // Read checks deliberately fail closed. Save/approval callers hold the provider's
+    // project-scoped transaction lock while these authoritative records are read.
     private async Task RequireConfirmationsAsync(Guid projectId, BlueprintDocument blueprint,
         CancellationToken cancellationToken)
     {
@@ -293,6 +307,66 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
         {
             db.ChangeTracker.Clear();
             throw new DbUpdateConcurrencyException("The draft changed while saving. Reload and retry.", exception);
+        }
+    }
+
+    private async Task<T> WithProjectReviewLockAsync<T>(
+        Guid projectId, Func<Task<T>> action, CancellationToken cancellationToken)
+    {
+        if (db.Database.CurrentTransaction is not null)
+        {
+            await AcquireProjectReviewLockAsync(projectId, cancellationToken);
+            return await action();
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted, cancellationToken);
+        try
+        {
+            await AcquireProjectReviewLockAsync(projectId, cancellationToken);
+            var result = await action();
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    private async Task AcquireProjectReviewLockAsync(Guid projectId, CancellationToken cancellationToken)
+    {
+        var provider = db.Database.ProviderName;
+        if (provider?.Contains("Npgsql", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({ProjectReviewLock.PostgreSqlKey(projectId)});",
+                cancellationToken);
+            return;
+        }
+
+        if (provider?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var connection = db.Database.GetDbConnection();
+            await using var command = connection.CreateCommand();
+            command.Transaction = db.Database.CurrentTransaction!.GetDbTransaction();
+            command.CommandText = """
+                DECLARE @lock_result int;
+                EXEC @lock_result = sys.sp_getapplock
+                    @Resource = @lock_resource,
+                    @LockMode = 'Exclusive',
+                    @LockOwner = 'Transaction',
+                    @LockTimeout = 15000;
+                SELECT @lock_result;
+                """;
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = "@lock_resource";
+            parameter.Value = ProjectReviewLock.SqlServerResource(projectId);
+            command.Parameters.Add(parameter);
+            var result = Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+            if (result < 0)
+                throw new TimeoutException("Could not acquire the project requirement-review lock.");
         }
     }
 

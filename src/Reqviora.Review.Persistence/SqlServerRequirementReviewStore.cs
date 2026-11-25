@@ -59,6 +59,23 @@ public sealed class SqlServerRequirementReviewStore(string connectionString) : I
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(
             IsolationLevel.ReadCommitted, cancellationToken);
+        const string lockSql = """
+            DECLARE @lock_result int;
+            EXEC @lock_result = sys.sp_getapplock
+                @Resource = @lock_resource,
+                @LockMode = 'Exclusive',
+                @LockOwner = 'Transaction',
+                @LockTimeout = 15000;
+            SELECT @lock_result;
+            """;
+        await using (var projectLock = new SqlCommand(lockSql, connection, transaction))
+        {
+            projectLock.Parameters.Add("lock_resource", SqlDbType.NVarChar, 255).Value =
+                ProjectReviewLock.SqlServerResource(projectId);
+            var lockResult = Convert.ToInt32(await projectLock.ExecuteScalarAsync(cancellationToken));
+            if (lockResult < 0)
+                throw new TimeoutException("Could not acquire the project requirement-review lock.");
+        }
         const string updateSql = """
             UPDATE reqviora_review.requirements
             SET title = @title, description = @description, status = @status,

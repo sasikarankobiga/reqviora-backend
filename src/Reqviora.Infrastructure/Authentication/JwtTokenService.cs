@@ -23,6 +23,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider t
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
             new Claim(ClaimTypes.Name, user.DisplayName),
+            new Claim(SessionFingerprint.ClaimType, SessionFingerprint.FromUser(user)),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 

@@ -5,12 +5,16 @@ using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reqviora.Api.Features.RequirementReview;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Domain.Entities;
+using Reqviora.Infrastructure.Persistence;
 using Xunit;
 
 namespace Reqviora.Api.IntegrationTests;
@@ -55,7 +59,7 @@ public sealed class RequirementReviewsTests : IDisposable
     [Fact]
     public async Task Submit_denies_other_users_before_loading_the_requirement()
     {
-        using var client = CreateClient(new User());
+        using var client = CreateClient(_factory.OtherUser);
 
         using var response = await SubmitAsync(client, Accept);
 
@@ -129,9 +133,33 @@ public sealed class RequirementReviewsTests : IDisposable
 
     private sealed class ReviewApiFactory : WebApplicationFactory<Program>
     {
+        private readonly SqliteConnection _connection = new("Data Source=:memory:");
         public Guid ProjectId { get; } = Guid.NewGuid();
-        public User Owner { get; } = new();
+        public User Owner { get; } = new()
+        {
+            Email = "review-owner@example.test",
+            NormalizedEmail = "REVIEW-OWNER@EXAMPLE.TEST",
+            DisplayName = "Review owner",
+            PasswordHash = "not-used-in-tests"
+        };
+        public User OtherUser { get; } = new()
+        {
+            Email = "review-other@example.test",
+            NormalizedEmail = "REVIEW-OTHER@EXAMPLE.TEST",
+            DisplayName = "Other reviewer",
+            PasswordHash = "not-used-in-tests"
+        };
         public TestReviewStore Store { get; } = new();
+
+        public ReviewApiFactory()
+        {
+            _connection.Open();
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            db.Database.EnsureCreated();
+            db.Users.AddRange(Owner, OtherUser);
+            db.SaveChanges();
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -140,11 +168,21 @@ public sealed class RequirementReviewsTests : IDisposable
             builder.UseSetting("Security:AuditEnabled", "false");
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
+                services.RemoveAll<IDbContextOptionsConfiguration<ReqvioraDbContext>>();
+                services.RemoveAll<ReqvioraDbContext>();
+                services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection));
                 services.RemoveAll<IRequirementReviewAccessPolicy>();
                 services.RemoveAll<IRequirementReviewStore>();
                 services.AddSingleton<IRequirementReviewAccessPolicy>(new ProjectAccess(ProjectId, Owner.Id));
                 services.AddSingleton<IRequirementReviewStore>(Store);
             });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing) _connection.Dispose();
         }
     }
 

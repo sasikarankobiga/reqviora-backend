@@ -83,7 +83,29 @@ try
     var decision = new RequirementReviewDecision(
         requirementId, 1, RequirementDecisionKind.Accept, reviewerId, DateTimeOffset.UtcNow);
     var result = RequirementReviewService.Apply(snapshot!.Requirement, decision);
-    Check(await store.TryCommitAsync(projectId, 1, result), "Review revision commits");
+    // Simulate the draft/approval transaction holding the same project lock.
+    await using var approvalTransaction = (SqlTransaction)await connection.BeginTransactionAsync();
+    const string approvalLockSql = """
+        DECLARE @lock_result int;
+        EXEC @lock_result = sys.sp_getapplock
+            @Resource = @lock_resource,
+            @LockMode = 'Exclusive',
+            @LockOwner = 'Transaction',
+            @LockTimeout = 15000;
+        SELECT @lock_result;
+        """;
+    await using (var approvalLock = new SqlCommand(approvalLockSql, connection, approvalTransaction))
+    {
+        approvalLock.Parameters.Add("lock_resource", SqlDbType.NVarChar, 255).Value =
+            ProjectReviewLock.SqlServerResource(projectId);
+        Check(Convert.ToInt32(await approvalLock.ExecuteScalarAsync()) >= 0,
+            "Approval transaction acquires the project review lock");
+    }
+    var concurrentReview = store.TryCommitAsync(projectId, 1, result);
+    await Task.Delay(150);
+    Check(!concurrentReview.IsCompleted, "Concurrent review waits for the approval transaction");
+    await approvalTransaction.CommitAsync();
+    Check(await concurrentReview, "Review revision commits");
 
     Check((await candidateStore.ListAsync(projectId, 0, 10)).Single().Status == RequirementReviewStatus.Confirmed,
         "Candidate listing reflects the human review decision");

@@ -55,6 +55,8 @@ public class ReqvioraDbContext : DbContext
             entity.Property(user => user.NormalizedEmail).HasMaxLength(320).IsRequired();
             entity.Property(user => user.PasswordHash).HasMaxLength(512).IsRequired();
             entity.Property(user => user.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(user => user.EmailVerified).HasDefaultValue(false);
+            entity.Property(user => user.SessionVersion).HasDefaultValue(0);
             entity.Property(user => user.RecoveryCodeHashes).IsConcurrencyToken();
         });
 
@@ -77,6 +79,7 @@ public class ReqvioraDbContext : DbContext
             entity.HasIndex(token => new { token.UserId, token.Purpose, token.ExpiresAt });
             entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
             entity.Property(token => token.TargetValue).HasMaxLength(320);
+            entity.Property(token => token.ConsumedAt).IsConcurrencyToken();
             entity.HasOne(token => token.User)
                 .WithMany()
                 .HasForeignKey(token => token.UserId)

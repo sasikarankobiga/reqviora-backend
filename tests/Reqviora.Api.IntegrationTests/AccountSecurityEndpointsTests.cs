@@ -1,9 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
@@ -111,6 +114,105 @@ public sealed class AccountSecurityEndpointsTests
     }
 
     [Fact]
+    public async Task Admin_bootstrap_credential_expires_and_enrollment_is_single_use()
+    {
+        using var factory = new AccountApiFactory(admin: true);
+        factory.VerifySeedUser();
+        using var client = factory.CreateClient();
+
+        using var requested = await client.PostAsJsonAsync("/api/security/admin-mfa/bootstrap/request", new
+        { email = factory.User.Email, password = "Initial-Password-123!" });
+        Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
+        var expiredToken = factory.Email.LastToken();
+        factory.ExpireAccountTokens();
+        using var expired = await client.PostAsJsonAsync(
+            "/api/security/admin-mfa/provision", new { token = expiredToken });
+        Assert.Equal(HttpStatusCode.BadRequest, expired.StatusCode);
+
+        using var requestedAgain = await client.PostAsJsonAsync("/api/security/admin-mfa/bootstrap/request", new
+        { email = factory.User.Email, password = "Initial-Password-123!" });
+        Assert.Equal(HttpStatusCode.Accepted, requestedAgain.StatusCode);
+        var token = factory.Email.LastToken();
+        using var provisioned = await client.PostAsJsonAsync(
+            "/api/security/admin-mfa/provision", new { token });
+        Assert.True(provisioned.StatusCode == HttpStatusCode.OK, await provisioned.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await provisioned.Content.ReadAsStringAsync());
+        var secret = payload.RootElement.GetProperty("secret").GetString()!;
+
+        using var repeatedProvision = await client.PostAsJsonAsync(
+            "/api/security/admin-mfa/provision", new { token });
+        Assert.Equal(HttpStatusCode.BadRequest, repeatedProvision.StatusCode);
+
+        using var verified = await client.PostAsJsonAsync(
+            "/api/security/admin-mfa/verify", new { token, code = Totp(secret) });
+        Assert.Equal(HttpStatusCode.NoContent, verified.StatusCode);
+        Assert.True(factory.ReadUser().MfaEnabled);
+        using var replay = await client.PostAsJsonAsync(
+            "/api/security/admin-mfa/verify", new { token, code = Totp(secret) });
+        Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode);
+
+        using var missingMfa = await client.PostAsJsonAsync("/api/auth/login", new
+        { email = factory.User.Email, password = "Initial-Password-123!", deviceId = "admin" });
+        Assert.Equal(HttpStatusCode.Unauthorized, missingMfa.StatusCode);
+        using var withMfa = await client.PostAsJsonAsync("/api/auth/login", new
+        { email = factory.User.Email, password = "Initial-Password-123!", deviceId = "admin", otpCode = Totp(secret) });
+        Assert.Equal(HttpStatusCode.OK, withMfa.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_enrollment_rejects_unauthorized_accounts_and_supervised_recovery_revokes_sessions()
+    {
+        using (var nonAdminFactory = new AccountApiFactory())
+        {
+            nonAdminFactory.VerifySeedUser();
+            using var nonAdminClient = nonAdminFactory.CreateClient();
+            using var hidden = await nonAdminClient.PostAsJsonAsync("/api/security/admin-mfa/bootstrap/request", new
+            { email = nonAdminFactory.User.Email, password = "Initial-Password-123!" });
+            Assert.Equal(HttpStatusCode.Accepted, hidden.StatusCode);
+            Assert.Equal(0, nonAdminFactory.Email.Count);
+            using var invalid = await nonAdminClient.PostAsJsonAsync(
+                "/api/security/admin-mfa/provision", new { token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) });
+            Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+            using var authenticated = nonAdminFactory.AuthenticatedClient();
+            using var forbiddenRecovery = await authenticated.PostAsJsonAsync(
+                "/api/security/admin-mfa/recovery/request", new { adminEmail = nonAdminFactory.User.Email });
+            Assert.Equal(HttpStatusCode.Forbidden, forbiddenRecovery.StatusCode);
+            Assert.Equal("application/problem+json", forbiddenRecovery.Content.Headers.ContentType?.MediaType);
+            Assert.True(forbiddenRecovery.Headers.Contains("X-Correlation-ID"));
+        }
+
+        using var factory = new AccountApiFactory(admin: true);
+        factory.EnableSeedMfa();
+        var targetBeforeRecovery = factory.ReadUser();
+        using var targetSession = factory.AuthenticatedClient(targetBeforeRecovery);
+        var supervisor = factory.AddSupervisor();
+        using var supervisorClient = factory.AuthenticatedClient(supervisor);
+
+        using var requested = await supervisorClient.PostAsJsonAsync(
+            "/api/security/admin-mfa/recovery/request", new { adminEmail = factory.User.Email });
+        Assert.Equal(HttpStatusCode.Accepted, requested.StatusCode);
+        var token = factory.Email.LastToken();
+        using var provisioned = await supervisorClient.PostAsJsonAsync(
+            "/api/security/admin-mfa/provision", new { token });
+        Assert.True(provisioned.StatusCode == HttpStatusCode.OK, await provisioned.Content.ReadAsStringAsync());
+        using var payload = JsonDocument.Parse(await provisioned.Content.ReadAsStringAsync());
+        var secret = payload.RootElement.GetProperty("secret").GetString()!;
+
+        using var revokedAccess = await targetSession.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, revokedAccess.StatusCode);
+        Assert.NotNull(factory.ReadSecurityState().RefreshToken.RevokedAt);
+        Assert.False(factory.ReadUser().MfaEnabled);
+
+        using var verified = await supervisorClient.PostAsJsonAsync(
+            "/api/security/admin-mfa/verify", new { token, code = Totp(secret) });
+        Assert.Equal(HttpStatusCode.NoContent, verified.StatusCode);
+        Assert.True(factory.ReadUser().MfaEnabled);
+        using var replay = await supervisorClient.PostAsJsonAsync(
+            "/api/security/admin-mfa/verify", new { token, code = Totp(secret) });
+        Assert.Equal(HttpStatusCode.BadRequest, replay.StatusCode);
+    }
+
+    [Fact]
     public async Task Verification_resend_is_anonymous_and_does_not_reveal_account_existence()
     {
         using var factory = new AccountApiFactory();
@@ -180,6 +282,61 @@ public sealed class AccountSecurityEndpointsTests
             PasswordVerificationResult.Success,
             new PasswordHasher<User>().VerifyHashedPassword(state.User, state.User.PasswordHash, "Updated-Password-123!"));
         Assert.NotNull(state.RefreshToken.RevokedAt);
+    }
+
+    [Fact]
+    public async Task Authenticated_password_change_rehashes_and_revokes_access_and_refresh_sessions()
+    {
+        using var factory = new AccountApiFactory();
+        using var client = factory.AuthenticatedClient();
+
+        using var changed = await client.PostAsJsonAsync(
+            "/api/account-security/password/change",
+            new { currentPassword = "Initial-Password-123!", newPassword = "Changed-Password-456!" });
+        Assert.True(changed.StatusCode == HttpStatusCode.NoContent, await changed.Content.ReadAsStringAsync());
+
+        var state = factory.ReadSecurityState();
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            new PasswordHasher<User>().VerifyHashedPassword(
+                state.User, state.User.PasswordHash, "Changed-Password-456!"));
+        Assert.NotNull(state.RefreshToken.RevokedAt);
+
+        using var oldSession = await client.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, oldSession.StatusCode);
+        Assert.Contains(factory.ReadAuditEvents(), audit =>
+            audit.Path == "/api/account-security/password/change" &&
+            audit.StatusCode == StatusCodes.Status204NoContent &&
+            audit.UserId == factory.User.Id);
+    }
+
+    [Fact]
+    public async Task Password_change_rejects_unauthorized_wrong_current_and_invalid_new_password()
+    {
+        using var factory = new AccountApiFactory();
+        using var anonymous = factory.CreateClient();
+        using var unauthorized = await anonymous.PostAsJsonAsync(
+            "/api/account-security/password/change",
+            new { currentPassword = "Initial-Password-123!", newPassword = "Changed-Password-456!" });
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+
+        using var client = factory.AuthenticatedClient();
+        using var wrongCurrent = await client.PostAsJsonAsync(
+            "/api/account-security/password/change",
+            new { currentPassword = "Wrong-Password-123!", newPassword = "Changed-Password-456!" });
+        Assert.Equal(HttpStatusCode.BadRequest, wrongCurrent.StatusCode);
+
+        using var invalidNew = await client.PostAsJsonAsync(
+            "/api/account-security/password/change",
+            new { currentPassword = "Initial-Password-123!", newPassword = "short" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidNew.StatusCode);
+
+        var state = factory.ReadSecurityState();
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            new PasswordHasher<User>().VerifyHashedPassword(
+                state.User, state.User.PasswordHash, "Initial-Password-123!"));
+        Assert.Null(state.RefreshToken.RevokedAt);
     }
 
     [Fact]
@@ -278,35 +435,81 @@ public sealed class AccountSecurityEndpointsTests
             db.SaveChanges();
         }
 
-        public HttpClient AuthenticatedClient()
+        public HttpClient AuthenticatedClient(User? authenticatedUser = null)
         {
             var client = CreateClient();
             using var scope = Services.CreateScope();
             var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
             client.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", tokens.CreateAccessToken(User).Token);
+                new AuthenticationHeaderValue("Bearer", tokens.CreateAccessToken(authenticatedUser ?? User).Token);
             return client;
         }
 
         public User ReadUser()
         {
             using var scope = Services.CreateScope();
-            return scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>().Users.AsNoTracking().Single();
+            return scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>().Users.AsNoTracking()
+                .Single(user => user.Id == User.Id);
         }
 
         public (User User, RefreshToken RefreshToken) ReadSecurityState()
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
-            return (db.Users.AsNoTracking().Single(), db.RefreshTokens.AsNoTracking().Single());
+            return (db.Users.AsNoTracking().Single(user => user.Id == User.Id),
+                db.RefreshTokens.AsNoTracking().Single(token => token.UserId == User.Id));
+        }
+
+        public AuditEvent[] ReadAuditEvents()
+        {
+            using var scope = Services.CreateScope();
+            return scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>()
+                .AuditEvents.AsNoTracking().ToArray();
         }
 
         public void VerifySeedUser()
         {
             using var scope = Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
-            db.Users.Single().EmailVerified = true;
+            db.Users.Single(user => user.Id == User.Id).EmailVerified = true;
             db.SaveChanges();
+        }
+
+        public void EnableSeedMfa()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            var user = db.Users.Single(candidate => candidate.Id == User.Id);
+            user.EmailVerified = true;
+            user.MfaEnabled = true;
+            user.MfaSecretProtected = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>()
+                .CreateProtector("Reqviora.MfaSecret.v1")
+                .Protect(Convert.ToBase64String(RandomNumberGenerator.GetBytes(20)));
+            user.RecoveryCodeHashes = "fixture";
+            db.SaveChanges();
+        }
+
+        public User AddSupervisor()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            var supervisor = new User
+            {
+                Email = "supervisor@example.test",
+                NormalizedEmail = "SUPERVISOR@EXAMPLE.TEST",
+                DisplayName = "Supervisor",
+                EmailVerified = true,
+                MfaEnabled = true
+            };
+            supervisor.PasswordHash = new PasswordHasher<User>()
+                .HashPassword(supervisor, "Supervisor-Password-123!");
+            supervisor.MfaSecretProtected = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>()
+                .CreateProtector("Reqviora.MfaSecret.v1")
+                .Protect(Convert.ToBase64String(RandomNumberGenerator.GetBytes(20)));
+            supervisor.RecoveryCodeHashes = "fixture";
+            db.Users.Add(supervisor);
+            db.SaveChanges();
+            return supervisor;
         }
 
         public void ExpireAccountTokens()
@@ -323,6 +526,7 @@ public sealed class AccountSecurityEndpointsTests
             builder.UseSetting("Jwt:Key", "account-test-signing-key-at-least-32-characters");
             builder.UseSetting("AccountLinks:BaseUrl", "https://app.example.test");
             if (_admin) builder.UseSetting("Security:AdminEmails:0", User.Email);
+            if (_admin) builder.UseSetting("Security:AdminEmails:1", "supervisor@example.test");
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
@@ -339,6 +543,35 @@ public sealed class AccountSecurityEndpointsTests
             base.Dispose(disposing);
             if (disposing) _connection.Dispose();
         }
+    }
+
+    private static string Totp(string base32)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var buffer = 0;
+        var bits = 0;
+        var bytes = new List<byte>();
+        foreach (var character in base32.TrimEnd('=').ToUpperInvariant())
+        {
+            var value = alphabet.IndexOf(character);
+            if (value < 0) throw new InvalidDataException("Invalid base32 secret.");
+            buffer = (buffer << 5) | value;
+            bits += 5;
+            if (bits < 8) continue;
+            bytes.Add((byte)(buffer >> (bits - 8)));
+            bits -= 8;
+            buffer &= (1 << bits) - 1;
+        }
+
+        var counter = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        Span<byte> input = stackalloc byte[8];
+        System.Buffers.Binary.BinaryPrimitives.WriteInt64BigEndian(input, counter);
+        using var hmac = new HMACSHA1(bytes.ToArray());
+        var hash = hmac.ComputeHash(input.ToArray());
+        var offset = hash[^1] & 0x0f;
+        var binary = ((hash[offset] & 0x7f) << 24) | (hash[offset + 1] << 16) |
+            (hash[offset + 2] << 8) | hash[offset + 3];
+        return (binary % 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     public sealed class CapturingEmailService : IEmailService

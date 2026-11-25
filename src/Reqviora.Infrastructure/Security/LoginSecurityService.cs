@@ -140,15 +140,7 @@ public sealed class LoginSecurityService(
     public bool ValidateOtp(User user, string code)
     {
         if (string.IsNullOrWhiteSpace(user.MfaSecretProtected)) return false;
-        if (code.Length == 6 && long.TryParse(code, out _))
-        {
-            var secret = Convert.FromBase64String(_protector.Unprotect(user.MfaSecretProtected));
-            var counter = clock.GetUtcNow().ToUnixTimeSeconds() / 30;
-            for (var drift = -1; drift <= 1; drift++)
-                if (CryptographicOperations.FixedTimeEquals(
-                    System.Text.Encoding.ASCII.GetBytes(Totp(secret, counter + drift)),
-                    System.Text.Encoding.ASCII.GetBytes(code))) return true;
-        }
+        if (ValidateTotp(user, code)) return true;
         var hash = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code.Trim())));
         var hashes = (user.RecoveryCodeHashes ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
         var index = hashes.FindIndex(candidate => CryptographicOperations.FixedTimeEquals(
@@ -159,6 +151,26 @@ public sealed class LoginSecurityService(
         hashes.RemoveAt(index);
         user.RecoveryCodeHashes = string.Join(',', hashes);
         return true;
+    }
+
+    public bool ValidateTotp(User user, string code)
+    {
+        if (string.IsNullOrWhiteSpace(user.MfaSecretProtected) ||
+            code.Length != 6 || !code.All(char.IsAsciiDigit)) return false;
+        try
+        {
+            var secret = Convert.FromBase64String(_protector.Unprotect(user.MfaSecretProtected));
+            var counter = clock.GetUtcNow().ToUnixTimeSeconds() / 30;
+            for (var drift = -1; drift <= 1; drift++)
+                if (CryptographicOperations.FixedTimeEquals(
+                    Encoding.ASCII.GetBytes(Totp(secret, counter + drift)),
+                    Encoding.ASCII.GetBytes(code))) return true;
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+        return false;
     }
 
     public async Task RecordAsync(User? user, string normalizedEmail, string ipAddress, string deviceId, bool succeeded,

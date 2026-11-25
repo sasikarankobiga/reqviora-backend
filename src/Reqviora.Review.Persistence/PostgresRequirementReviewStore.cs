@@ -173,6 +173,14 @@ public sealed class PostgresRequirementReviewStore
                 IsolationLevel.ReadCommitted,
                 cancellationToken);
 
+        await using (var projectLock = new NpgsqlCommand(
+            "SELECT pg_advisory_xact_lock(@lock_key);", connection, transaction))
+        {
+            projectLock.Parameters.AddWithValue(
+                "lock_key", NpgsqlDbType.Bigint, ProjectReviewLock.PostgreSqlKey(projectId));
+            await projectLock.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         const string updateSql = """
             UPDATE reqviora_review.requirements
             SET

@@ -1,6 +1,9 @@
 using System.Text;
+using System.Text.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -91,9 +94,88 @@ public static class DependencyInjection
                     NameClaimType = ClaimTypes.Name,
                     RoleClaimType = ClaimTypes.Role
                 };
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var subject = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+                            ?? context.Principal?.FindFirstValue("sub");
+                        var presented = context.Principal?.FindFirstValue(SessionFingerprint.ClaimType);
+                        if (!Guid.TryParse(subject, out var userId) || string.IsNullOrWhiteSpace(presented))
+                        {
+                            context.Fail("The session is no longer valid.");
+                            return;
+                        }
+
+                        var db = context.HttpContext.RequestServices.GetRequiredService<ReqvioraDbContext>();
+                        var state = await db.Users.AsNoTracking()
+                            .Where(user => user.Id == userId)
+                            .Select(user => new
+                            {
+                                user.SessionVersion,
+                                user.Email,
+                                RoleName = user.RoleId == null ? null : db.Roles
+                                    .Where(role => role.Id == user.RoleId)
+                                    .Select(role => role.Name)
+                                    .SingleOrDefault()
+                            })
+                            .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                        if (state is null || !SessionFingerprint.Matches(presented, state.SessionVersion))
+                        {
+                            context.Fail("The session is no longer valid.");
+                            return;
+                        }
+
+                        if (context.Principal?.Identity is ClaimsIdentity identity)
+                        {
+                            if (!string.IsNullOrWhiteSpace(state.RoleName) && !identity.HasClaim(ClaimTypes.Role, state.RoleName))
+                                identity.AddClaim(new Claim(ClaimTypes.Role, state.RoleName));
+                            var adminEmails = configuration.GetSection("Security:AdminEmails").Get<string[]>() ?? [];
+                            if (adminEmails.Contains(state.Email, StringComparer.OrdinalIgnoreCase) &&
+                                !identity.HasClaim(ClaimTypes.Role, "Administrator"))
+                                identity.AddClaim(new Claim(ClaimTypes.Role, "Administrator"));
+                        }
+                    },
+                    OnChallenge = async context =>
+                    {
+                        if (context.Response.HasStarted) return;
+                        context.HandleResponse();
+                        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        context.Response.ContentType = "application/problem+json";
+                        await context.Response.WriteAsync(JsonSerializer.Serialize(new
+                        {
+                            type = "https://httpstatuses.com/401",
+                            title = "Authentication is required.",
+                            status = StatusCodes.Status401Unauthorized,
+                            instance = context.Request.Path.Value,
+                            correlationId = context.HttpContext.TraceIdentifier
+                        }), context.HttpContext.RequestAborted);
+                    },
+                    OnForbidden = async context =>
+                    {
+                        if (context.Response.HasStarted) return;
+                        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                        context.Response.ContentType = "application/problem+json";
+                        await context.Response.WriteAsync(JsonSerializer.Serialize(new
+                        {
+                            type = "https://httpstatuses.com/403",
+                            title = "Authorization is denied.",
+                            status = StatusCodes.Status403Forbidden,
+                            instance = context.Request.Path.Value,
+                            correlationId = context.HttpContext.TraceIdentifier
+                        }), context.HttpContext.RequestAborted);
+                    }
+                };
             });
-        services.AddAuthorization();
-        services.AddDataProtection();
+        services.AddAuthorization(options =>
+        {
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+            options.AddPolicy("Administrator", policy =>
+                policy.RequireAuthenticatedUser().RequireRole("Admin", "Administrator"));
+        });
+        services.AddReqvioraDataProtection(configuration);
         services.AddScoped<LoginSecurityService>();
         services.AddScoped<ILoginSecurityService>(sp => sp.GetRequiredService<LoginSecurityService>());
 

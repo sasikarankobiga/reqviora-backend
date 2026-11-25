@@ -200,6 +200,28 @@ public sealed class ProjectDraftServiceTests
         }
     }
 
+    [Fact]
+    public async Task Design_save_and_approval_read_confirmations_inside_the_database_transaction()
+    {
+        await using var database = await PersistenceDatabase.CreateAsync("sqlite");
+        await using var db = database.Open();
+        var (owner, project) = await SeedProjectAsync(db);
+        var transactionObserved = new List<bool>();
+        var reviews = new TransactionInspectingReviewStore(
+            db, new FixtureReviewStore(project.Id, owner.Id), transactionObserved);
+        var service = new ProjectDraftService(db, reviews);
+        var blueprint = await LoadBlueprintAsync(project.Id, owner.Id);
+
+        var draft = await service.SaveDesignAsync(project.Id, owner.Id, "{}", blueprint, null);
+        var validation = await service.ValidateAsync(project.Id, owner.Id, draft.ConcurrencyToken);
+        await service.ApproveAsync(project.Id, owner.Id, draft.ConcurrencyToken, validation.Id);
+
+        Assert.True(validation.Passed);
+        Assert.True(transactionObserved.Count >= 3);
+        Assert.True(transactionObserved[0]);
+        Assert.True(transactionObserved[^1]);
+    }
+
     [Theory]
     [MemberData(nameof(Providers))]
     public async Task Workspace_membership_rejects_duplicates_and_missing_users(string provider)
@@ -367,6 +389,24 @@ public sealed class ProjectDraftServiceTests
 
         public Task<bool> TryCommitAsync(Guid projectId, int expectedRevision, RequirementReviewResult result,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
+    private sealed class TransactionInspectingReviewStore(
+        ReqvioraDbContext db,
+        IRequirementReviewStore inner,
+        List<bool> observations) : IRequirementReviewStore
+    {
+        public async Task<RequirementReviewSnapshot?> FindAsync(
+            Guid projectId, string requirementId, CancellationToken cancellationToken = default)
+        {
+            observations.Add(db.Database.CurrentTransaction is not null);
+            return await inner.FindAsync(projectId, requirementId, cancellationToken);
+        }
+
+        public Task<bool> TryCommitAsync(
+            Guid projectId, int expectedRevision, RequirementReviewResult result,
+            CancellationToken cancellationToken = default) =>
+            inner.TryCommitAsync(projectId, expectedRevision, result, cancellationToken);
     }
 
     private static SecondBrainPackage ChangeExportBytes(SecondBrainPackage package)

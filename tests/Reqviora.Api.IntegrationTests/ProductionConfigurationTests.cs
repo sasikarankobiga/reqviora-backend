@@ -19,6 +19,9 @@ public sealed class ProductionConfigurationTests
     [InlineData("Smtp:UseSsl", "false")]
     [InlineData("Storage:RequireAntivirus", "false")]
     [InlineData("Cors:AllowedOrigins:0", "http://app.example.test")]
+    [InlineData("DataProtection:KeysPath", "relative-keys")]
+    [InlineData("DataProtection:CertificatePassword", "")]
+    [InlineData("RateLimiting:Mode", "Unsupported")]
     public void Unsafe_production_configuration_is_rejected(string key, string value)
     {
         var values = Values();
@@ -37,6 +40,19 @@ public sealed class ProductionConfigurationTests
             ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
     }
 
+    [Fact]
+    public void Distributed_gateway_rate_limiting_requires_an_explicit_trusted_proxy()
+    {
+        var values = Values();
+        values["RateLimiting:Mode"] = "DistributedGateway";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["ForwardedHeaders:Enabled"] = "true";
+        values["ForwardedHeaders:KnownProxies:0"] = "10.0.0.10";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
     private static IConfiguration Configuration(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder().AddInMemoryCollection(values ?? Values()).Build();
 
@@ -46,8 +62,15 @@ public sealed class ProductionConfigurationTests
         ["Storage:ClamAvHost"] = "clamav.internal",
         ["Storage:ClamAvPort"] = "3310",
         ["Storage:RootPath"] = Path.GetFullPath("private-artifacts"),
+        ["DataProtection:ApplicationName"] = "REQVIORA",
+        ["DataProtection:KeysPath"] = Path.GetFullPath("data-protection-keys"),
+        ["DataProtection:KeyEncryptionMode"] = "Certificate",
+        ["DataProtection:CertificatePath"] = Path.GetFullPath("secrets/data-protection.pfx"),
+        ["DataProtection:CertificatePassword"] = "from-secret-store",
         ["AccountLinks:BaseUrl"] = "https://app.example.test",
         ["Cors:AllowedOrigins:0"] = "https://app.example.test",
+        ["ForwardedHeaders:Enabled"] = "false",
+        ["RateLimiting:Mode"] = "Local",
         ["Smtp:Host"] = "smtp.example.test",
         ["Smtp:Port"] = "587",
         ["Smtp:UseSsl"] = "true",

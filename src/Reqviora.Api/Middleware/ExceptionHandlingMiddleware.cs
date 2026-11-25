@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 
@@ -30,13 +31,16 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 logger.LogInformation("Request rejected with {StatusCode}: {Reason}", (int)status, title);
 
             context.Response.StatusCode = (int)status;
-            await context.Response.WriteAsJsonAsync(new ProblemDetails
+            context.Response.ContentType = "application/problem+json";
+            var problem = new ProblemDetails
             {
                 Status = (int)status,
                 Title = title,
                 Type = $"https://httpstatuses.com/{(int)status}",
                 Instance = context.Request.Path
-            });
+            };
+            problem.Extensions["correlationId"] = context.TraceIdentifier;
+            await context.Response.WriteAsync(JsonSerializer.Serialize(problem), context.RequestAborted);
         }
     }
 }

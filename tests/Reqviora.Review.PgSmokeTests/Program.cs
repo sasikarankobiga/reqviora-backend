@@ -119,8 +119,22 @@ try
         snapshot!.Requirement,
         decision);
 
-    var saved = await store.TryCommitAsync(
-        projectId, 1, result);
+    // Simulate the draft/approval transaction holding the same project lock.
+    // A concurrent review must wait, so confirmation reads and approval writes
+    // have one database-enforced order across application instances.
+    await using var approvalTransaction = await connection.BeginTransactionAsync();
+    await using (var approvalLock = new NpgsqlCommand(
+        "SELECT pg_advisory_xact_lock(@lock_key);", connection, approvalTransaction))
+    {
+        approvalLock.Parameters.AddWithValue(
+            "lock_key", NpgsqlDbType.Bigint, ProjectReviewLock.PostgreSqlKey(projectId));
+        await approvalLock.ExecuteNonQueryAsync();
+    }
+    var concurrentReview = store.TryCommitAsync(projectId, 1, result);
+    await Task.Delay(150);
+    Check(!concurrentReview.IsCompleted, "Concurrent review waits for the approval transaction");
+    await approvalTransaction.CommitAsync();
+    var saved = await concurrentReview;
 
     Check(saved, "Review revision commits");
 

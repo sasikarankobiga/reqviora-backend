@@ -98,6 +98,28 @@ public sealed class AccountSecurityController(
         return Accepted();
     }
 
+    [Authorize]
+    [HttpPost("password/change")]
+    public async Task<IActionResult> ChangePassword(
+        ChangePasswordRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var user = await CurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+
+        var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.CurrentPassword);
+        if (verification == PasswordVerificationResult.Failed)
+            return Problem(title: "The current password is invalid.", statusCode: StatusCodes.Status400BadRequest);
+        if (string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+            return Problem(title: "The new password must be different.", statusCode: StatusCodes.Status400BadRequest);
+
+        user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
+        user.SessionVersion = checked(user.SessionVersion + 1);
+        await RevokeSessionsAsync(user.Id, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
     [AllowAnonymous]
     [HttpPost("password/reset")]
     public async Task<IActionResult> ResetPassword(
@@ -109,6 +131,7 @@ public sealed class AccountSecurityController(
             return Problem(title: "The password-reset token is invalid or expired.", statusCode: StatusCodes.Status400BadRequest);
 
         action.User.PasswordHash = passwordHasher.HashPassword(action.User, request.NewPassword);
+        action.User.SessionVersion = checked(action.User.SessionVersion + 1);
         action.ConsumedAt = clock.GetUtcNow();
         await RevokeSessionsAsync(action.UserId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -161,6 +184,7 @@ public sealed class AccountSecurityController(
         action.User.Email = action.TargetValue;
         action.User.NormalizedEmail = normalizedEmail;
         action.User.EmailVerified = true;
+        action.User.SessionVersion = checked(action.User.SessionVersion + 1);
         action.ConsumedAt = clock.GetUtcNow();
         await RevokeSessionsAsync(action.UserId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);

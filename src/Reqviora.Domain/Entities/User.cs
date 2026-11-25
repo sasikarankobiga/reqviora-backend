@@ -13,4 +13,5 @@ public sealed class User : AggregateRoot
     public bool MfaEnabled { get; set; }
     public string? MfaSecretProtected { get; set; }
     public string? RecoveryCodeHashes { get; set; }
+    public int SessionVersion { get; set; }
 }

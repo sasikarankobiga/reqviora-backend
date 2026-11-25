@@ -15,11 +15,51 @@ public static class ProductionConfigurationValidator
         Require(Path.IsPathRooted(configuration["Storage:RootPath"] ?? string.Empty),
             "Production requires an absolute private Storage:RootPath.");
 
+        Require(!string.IsNullOrWhiteSpace(configuration["DataProtection:ApplicationName"]),
+            "Production requires DataProtection:ApplicationName.");
+        Require(Path.IsPathRooted(configuration["DataProtection:KeysPath"] ?? string.Empty),
+            "Production requires an absolute persistent DataProtection:KeysPath.");
+        var certificateKeys = string.Equals(configuration["DataProtection:KeyEncryptionMode"],
+            "Certificate", StringComparison.OrdinalIgnoreCase);
+        var dpapiKeys = string.Equals(configuration["DataProtection:KeyEncryptionMode"],
+            "Dpapi", StringComparison.OrdinalIgnoreCase);
+        Require(certificateKeys || dpapiKeys,
+            "Production Data Protection key encryption must use Certificate or Dpapi.");
+        if (certificateKeys)
+        {
+            Require(Path.IsPathRooted(configuration["DataProtection:CertificatePath"] ?? string.Empty),
+                "Production certificate key encryption requires an absolute certificate path.");
+            Require(!string.IsNullOrWhiteSpace(configuration["DataProtection:CertificatePassword"]),
+                "Production certificate password must come from a secret provider.");
+        }
+        else
+        {
+            Require(OperatingSystem.IsWindows(), "DPAPI Data Protection key encryption requires Windows.");
+        }
+
         RequireSecureUrl(configuration["AccountLinks:BaseUrl"], "AccountLinks:BaseUrl");
         var origins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
         Require(origins.Length > 0, "Production requires at least one explicit Cors:AllowedOrigins entry.");
         foreach (var origin in origins)
             RequireSecureUrl(origin, "Cors:AllowedOrigins");
+
+        var forwardedHeaders = configuration.GetValue<bool>("ForwardedHeaders:Enabled");
+        var trustedProxies = configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [];
+        if (forwardedHeaders)
+        {
+            Require(trustedProxies.Length > 0,
+                "Forwarded headers require at least one explicit trusted proxy.");
+            foreach (var proxy in trustedProxies)
+                Require(System.Net.IPAddress.TryParse(proxy, out _),
+                    "ForwardedHeaders:KnownProxies must contain IP addresses only.");
+        }
+
+        var rateLimitMode = configuration["RateLimiting:Mode"] ?? "Local";
+        Require(rateLimitMode is "Local" or "DistributedGateway",
+            "RateLimiting:Mode must be Local or DistributedGateway.");
+        if (rateLimitMode == "DistributedGateway")
+            Require(forwardedHeaders && trustedProxies.Length > 0,
+                "DistributedGateway rate limiting requires trusted forwarded-header configuration.");
 
         Require(!string.IsNullOrWhiteSpace(configuration["Smtp:Host"]),
             "Production requires Smtp:Host.");

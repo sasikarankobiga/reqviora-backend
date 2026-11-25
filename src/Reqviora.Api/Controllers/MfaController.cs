@@ -45,6 +45,7 @@ public sealed class MfaController(ReqvioraDbContext db, IDataProtectionProvider 
         var user = await db.Users.SingleAsync(x => x.Id == id, ct);
         if (!security.ValidateOtp(user, request.Code)) return Unauthorized();
         user.MfaEnabled = true;
+        user.SessionVersion = checked(user.SessionVersion + 1);
         await db.SaveChangesAsync(ct);
         return NoContent();
     }
