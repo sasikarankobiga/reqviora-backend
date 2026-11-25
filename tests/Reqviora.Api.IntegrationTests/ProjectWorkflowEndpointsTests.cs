@@ -32,6 +32,25 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 {
     private readonly WorkflowApiFactory _factory = new();
 
+    [Fact]
+    public async Task Openapi_and_liveness_documents_are_available_for_frontend_integration()
+    {
+        using var client = _factory.CreateClient();
+        using var live = await client.GetAsync("/health/live");
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+
+        using var response = await client.GetAsync("/swagger/v1/swagger.json");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var document = JsonNode.Parse(await response.Content.ReadAsStringAsync())!;
+        Assert.StartsWith("3.", document["openapi"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.NotNull(document["components"]!["securitySchemes"]!["Bearer"]);
+        var paths = document["paths"]!.AsObject();
+        Assert.Contains("/api/projects/{projectId}/builder", paths.Select(path => path.Key));
+        Assert.Contains("/api/projects/{projectId}/builder/steps/theme-brand", paths.Select(path => path.Key));
+        Assert.Contains("/api/projects/{projectId}/builder/steps/review-preview", paths.Select(path => path.Key));
+        Assert.NotNull(paths["/api/projects/{projectId}/builder/steps/theme-brand"]!["put"]!["responses"]!["409"]);
+    }
+
     [Theory]
     [InlineData("/api/projects/{0}/drafts/current")]
     [InlineData("/api/projects/{0}/blueprints/current")]

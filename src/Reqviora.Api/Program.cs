@@ -105,11 +105,6 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-app.UseCors("Frontend");
-app.UseAuthentication();
-app.UseRateLimiter();
-app.UseAuthorization();
-
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -119,6 +114,11 @@ if (app.Environment.IsDevelopment())
         options.RoutePrefix = "swagger";
     });
 }
+
+app.UseCors("Frontend");
+app.UseAuthentication();
+app.UseRateLimiter();
+app.UseAuthorization();
 
 app.MapGet("/", (IHostEnvironment environment) =>
         environment.IsDevelopment()

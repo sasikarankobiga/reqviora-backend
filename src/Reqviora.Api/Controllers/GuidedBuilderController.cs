@@ -29,6 +29,7 @@ public sealed class GuidedBuilderController(ProjectDraftService drafts) : Contro
 
     [HttpPost("validate")]
     [ProducesResponseType<GuidedBuilderValidationResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GuidedBuilderValidationResponse>> Validate(Guid projectId, CancellationToken ct)
     {
         var draft = await drafts.ResumeAsync(projectId, ProjectApiAccess.RequireUserId(User), ct);
@@ -38,48 +39,72 @@ public sealed class GuidedBuilderController(ProjectDraftService drafts) : Contro
     }
 
     [HttpPut("steps/identity-audience")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveIdentity(Guid projectId,
         BuilderStepSaveRequest<IdentityAudienceStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { IdentityAudience = value }, ct);
 
     [HttpPut("steps/features-screens")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveFeatures(Guid projectId,
         BuilderStepSaveRequest<FeaturesScreensStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { FeaturesScreens = value }, ct);
 
     [HttpPut("steps/navigation")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveNavigation(Guid projectId,
         BuilderStepSaveRequest<NavigationStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { Navigation = value }, ct);
 
     [HttpPut("steps/theme-brand")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveTheme(Guid projectId,
         BuilderStepSaveRequest<ThemeBrandStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { ThemeBrand = value }, ct);
 
     [HttpPut("steps/components-layout")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveComponents(Guid projectId,
         BuilderStepSaveRequest<ComponentsLayoutStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { ComponentsLayout = value }, ct);
 
     [HttpPut("steps/interactions-states")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveInteractions(Guid projectId,
         BuilderStepSaveRequest<InteractionsStatesStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { InteractionsStates = value }, ct);
 
     [HttpPut("steps/ai-design-workspace")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveWorkspace(Guid projectId,
         BuilderStepSaveRequest<AiDesignWorkspaceStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
             (builder, value) => builder with { AiDesignWorkspace = value }, ct);
 
     [HttpPut("steps/review-preview")]
+    [ProducesResponseType<GuidedBuilderResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
     public Task<ActionResult<GuidedBuilderResponse>> SaveReview(Guid projectId,
         BuilderStepSaveRequest<ReviewPreviewStep> request, CancellationToken ct) =>
         SaveAsync(projectId, request.Data, request.ExpectedConcurrencyToken,
