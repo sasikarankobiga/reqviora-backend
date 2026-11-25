@@ -6,6 +6,7 @@ using Reqviora.Application.Features.SecondBrain;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
+using Reqviora.Application.Features.GuidedBuilder;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -402,6 +403,12 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
             });
             if (document.RootElement.ValueKind != JsonValueKind.Object)
                 throw new ArgumentException("The draft must be a JSON object.", nameof(draftJson));
+            if (document.RootElement.TryGetProperty("guidedBuilder", out var builderElement))
+            {
+                var builder = builderElement.Deserialize<GuidedBuilderDocument>(DraftBlueprint.Json)
+                    ?? throw new ArgumentException("The guided builder document is required.", nameof(draftJson));
+                GuidedBuilderValidator.RequireValid(builder);
+            }
         }
         catch (JsonException exception)
         {

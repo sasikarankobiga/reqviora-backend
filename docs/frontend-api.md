@@ -57,6 +57,25 @@ Create the first draft without a token. Every successful write returns a new `co
 
 A stale or missing token on an existing draft returns `409`. Approval locks that draft. Call `start-after-approval` with its latest token before making further changes.
 
+## Eight-step guided builder
+
+The typed builder is persisted inside the same versioned draft under `guidedBuilder` (`schemaVersion: "1.0"`). Send the latest draft `concurrencyToken` as `expectedConcurrencyToken` on every step after the first. This preserves generic draft compatibility while preventing essential builder data from becoming opaque JSON.
+
+| Method | Route | Typed step |
+| --- | --- | --- |
+| GET | `/api/projects/{projectId}/builder` | Resume all steps and the current token |
+| PUT | `/api/projects/{projectId}/builder/steps/identity-audience` | Identity, audience, personas, roles and sources |
+| PUT | `/api/projects/{projectId}/builder/steps/features-screens` | Requirements, features, screens and coverage mappings |
+| PUT | `/api/projects/{projectId}/builder/steps/navigation` | Initial screen, routes, outcomes, conditions and roles |
+| PUT | `/api/projects/{projectId}/builder/steps/theme-brand` | Palette, tokens, typography, spacing, borders, elevation and breakpoints |
+| PUT | `/api/projects/{projectId}/builder/steps/components-layout` | Registry, properties, hierarchy and responsive layouts |
+| PUT | `/api/projects/{projectId}/builder/steps/interactions-states` | Fields, validation, actions, UI states and transitions |
+| PUT | `/api/projects/{projectId}/builder/steps/ai-design-workspace` | Protection, editable properties, alternatives, autosave and history |
+| PUT | `/api/projects/{projectId}/builder/steps/review-preview` | Preview graph, review decisions and coverage readiness |
+| POST | `/api/projects/{projectId}/builder/validate` | Complete cross-step validation report |
+
+Each PUT body is `{ "data": <typed-step>, "expectedConcurrencyToken": <token-or-null> }`. Writes reject broken IDs, unsupported component variants/properties, hierarchy cycles, unknown design tokens and invalid state/navigation references. Completion validation also reports missing steps, uncovered requirements, unused or unreachable screens, and incomplete review coverage.
+
 ## Requirements and generated graph
 
 These endpoints return only persisted Blueprint content; they do not invoke an AI provider or fabricate missing data.

@@ -42,6 +42,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     [InlineData("/api/projects/{0}/approvals")]
     [InlineData("/api/projects/{0}/exports")]
     [InlineData("/api/projects/{0}/overview")]
+    [InlineData("/api/projects/{0}/builder")]
     public async Task Sensitive_routes_require_authentication(string route)
     {
         using var client = _factory.CreateClient();
@@ -77,6 +78,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     [InlineData("/api/projects/{0}/approvals")]
     [InlineData("/api/projects/{0}/exports")]
     [InlineData("/api/projects/{0}/overview")]
+    [InlineData("/api/projects/{0}/builder")]
     public async Task Other_users_cannot_read_project_content(string route)
     {
         using var client = CreateClient(_factory.OtherUser);
@@ -665,6 +667,147 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Guided_builder_persists_validates_and_versions_all_eight_typed_steps()
+    {
+        using var factory = new WorkflowApiFactory();
+        using var client = CreateClient(factory.Owner, factory);
+        Guid? token = null;
+
+        token = await SaveBuilderStep(client, factory.Project.Id, "identity-audience", new
+        {
+            projectName = "Reqviora", tagline = "Design with evidence", description = "Guided product design",
+            category = "SaaS", industry = "Software", problemStatement = "Teams lose traceability",
+            goals = new[] { "Preserve traceability" }, targetAudience = new[] { "Product teams" },
+            personas = new[] { new { id = "PER-1", name = "Designer", description = "Creates flows", goals = new[] { "Ship safely" } } },
+            roles = new[] { new { id = "ROLE-1", name = "Designer", description = "Edits designs" } },
+            platforms = new[] { "web" }, scope = "MVP", constraints = new[] { "WCAG AA" },
+            assumptions = new[] { "Authenticated users" }, successCriteria = new[] { "All requirements covered" },
+            sourceReferences = new[] { new { sourceId = "SRC-1", locator = "page:1", quote = "Traceable design" } }
+        }, token);
+        token = await SaveBuilderStep(client, factory.Project.Id, "features-screens", new
+        {
+            requirements = new[] { new { id = "REQ-1", text = "Users create designs", priority = "must", confirmed = true } },
+            features = new[] { new { id = "FEAT-1", name = "Designer", description = "Design workspace", requirementIds = new[] { "REQ-1" } } },
+            screens = new[] { new { id = "SCR-1", name = "Workspace", purpose = "Edit designs", featureIds = new[] { "FEAT-1" }, allowedRoleIds = new[] { "ROLE-1" } } }
+        }, token);
+        token = await SaveBuilderStep(client, factory.Project.Id, "navigation", new
+        {
+            initialScreenId = "SCR-1", routes = Array.Empty<object>()
+        }, token);
+        token = await SaveBuilderStep(client, factory.Project.Id, "theme-brand", new
+        {
+            palette = new Dictionary<string, string> { ["primary"] = "#112233" },
+            semanticColors = new Dictionary<string, string> { ["brand"] = "primary" },
+            typography = new[] { new { token = "body", fontFamily = "Inter", size = 16, weight = 400, lineHeight = 1.5 } },
+            spacing = new Dictionary<string, double> { ["sm"] = 8 },
+            borders = Array.Empty<object>(), elevation = Array.Empty<object>(),
+            breakpoints = new[] { new { name = "mobile", minWidth = 0 } },
+            brandAssets = Array.Empty<object>(),
+            accessibility = new { minimumContrast = "AA", reducedMotion = true, keyboardNavigation = true, screenReaderLabels = true }
+        }, token);
+        token = await SaveBuilderStep(client, factory.Project.Id, "components-layout", new
+        {
+            registry = new[] { new { type = "Text", variants = new[] { "default" }, supportedProperties = new[] { "text" }, allowsChildren = false } },
+            components = new[] { new
+            {
+                id = "CMP-1", screenId = "SCR-1", type = "Text", variant = "default", parentId = (string?)null,
+                childIds = Array.Empty<string>(), properties = new Dictionary<string, string> { ["text"] = "Welcome" },
+                layout = new { mode = "stack", columns = 1, gapToken = "sm", breakpoint = (string?)null },
+                responsiveLayouts = new Dictionary<string, object> { ["mobile"] = new { mode = "stack", columns = 1, gapToken = "sm", breakpoint = "mobile" } },
+                @protected = false, editableProperties = new[] { "text" }
+            } }
+        }, token);
+        token = await SaveBuilderStep(client, factory.Project.Id, "interactions-states", new
+        {
+            formFields = Array.Empty<object>(), actions = Array.Empty<object>(),
+            states = new[] { new { id = "STATE-1", screenId = "SCR-1", kind = "default", description = "Ready", visibleComponentIds = new[] { "CMP-1" } } },
+            transitions = Array.Empty<object>()
+        }, token);
+        token = await SaveBuilderStep(client, factory.Project.Id, "ai-design-workspace", new
+        {
+            blueprintSchemaVersion = "1.0", protectedComponentIds = Array.Empty<string>(),
+            editableProperties = new Dictionary<string, IReadOnlyList<string>> { ["CMP-1"] = new[] { "text" } },
+            alternatives = Array.Empty<object>(), autosaveEnabled = true, autosaveSeconds = 30,
+            undoVersionIds = Array.Empty<string>(), redoVersionIds = Array.Empty<string>(), requirementTraceIds = new[] { "REQ-1" }
+        }, token);
+        var tokenBeforeReview = token;
+        token = await SaveBuilderStep(client, factory.Project.Id, "review-preview", new
+        {
+            screens = new[] { new { screenId = "SCR-1", title = "Workspace", componentIds = new[] { "CMP-1" }, stateIds = new[] { "STATE-1" } } },
+            navigation = Array.Empty<object>(), decisions = Array.Empty<object>(),
+            requirementCount = 1, coveredRequirementCount = 1, readyForApproval = true
+        }, token);
+
+        using var validation = await client.PostAsync($"/api/projects/{factory.Project.Id}/builder/validate", null);
+        Assert.Equal(HttpStatusCode.OK, validation.StatusCode);
+        Assert.True((await validation.Content.ReadFromJsonAsync<JsonObject>())!["passed"]!.GetValue<bool>());
+        using var resumed = await client.GetAsync($"/api/projects/{factory.Project.Id}/builder");
+        var body = JsonNode.Parse(await resumed.Content.ReadAsStringAsync())!;
+        Assert.Equal("Reqviora", body["builder"]!["identityAudience"]!["projectName"]!.GetValue<string>());
+        Assert.Equal(8, body["draftVersion"]!.GetValue<int>());
+
+        using var stale = await client.PutAsJsonAsync($"/api/projects/{factory.Project.Id}/builder/steps/review-preview", new
+        {
+            data = body["builder"]!["reviewPreview"], expectedConcurrencyToken = tokenBeforeReview
+        });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.NotEqual(tokenBeforeReview, token);
+    }
+
+    [Fact]
+    public async Task Guided_builder_rejects_broken_cross_step_references_without_saving()
+    {
+        using var factory = new WorkflowApiFactory();
+        using var client = CreateClient(factory.Owner, factory);
+        var token = await SaveBuilderStep(client, factory.Project.Id, "identity-audience", new
+        {
+            projectName = "Reqviora", tagline = "", description = "Builder", category = "SaaS", industry = "Software",
+            problemStatement = "Traceability", goals = new[] { "Validate" }, targetAudience = new[] { "Teams" },
+            personas = Array.Empty<object>(), roles = new[] { new { id = "ROLE-1", name = "Owner", description = "Owner" } },
+            platforms = new[] { "web" }, scope = "MVP", constraints = Array.Empty<string>(), assumptions = Array.Empty<string>(),
+            successCriteria = new[] { "Valid" }, sourceReferences = Array.Empty<object>()
+        }, null);
+        using var invalid = await client.PutAsJsonAsync(
+            $"/api/projects/{factory.Project.Id}/builder/steps/features-screens", new
+            {
+                data = new
+                {
+                    requirements = new[] { new { id = "REQ-1", text = "Requirement", priority = "must", confirmed = true } },
+                    features = new[] { new { id = "FEAT-1", name = "Feature", description = "Feature", requirementIds = new[] { "REQ-MISSING" } } },
+                    screens = new[] { new { id = "SCR-1", name = "Screen", purpose = "Screen", featureIds = new[] { "FEAT-MISSING" }, allowedRoleIds = new[] { "ROLE-MISSING" } } }
+                },
+                expectedConcurrencyToken = token
+            });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        using var resumed = await client.GetAsync($"/api/projects/{factory.Project.Id}/builder");
+        var body = JsonNode.Parse(await resumed.Content.ReadAsStringAsync())!;
+        Assert.Null(body["builder"]!["featuresScreens"]);
+        Assert.Equal(1, body["draftVersion"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public async Task Generic_draft_endpoint_cannot_bypass_guided_builder_validation()
+    {
+        using var client = CreateClient(_factory.Owner);
+        using var response = await client.PutAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/drafts/current", new
+            {
+                draft = new
+                {
+                    guidedBuilder = new
+                    {
+                        schemaVersion = "9.9",
+                        themeBrand = new { palette = new Dictionary<string, string> { ["bad"] = "red" } }
+                    }
+                },
+                expectedConcurrencyToken = (Guid?)null
+            });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Initial_blueprint_generation_uses_confirmed_review_records_and_preserves_draft()
     {
         using var owner = CreateClient(_factory.Owner);
@@ -1018,6 +1161,16 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         file.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
         form.Add(file, "file", fileName);
         return form;
+    }
+
+    private static async Task<Guid> SaveBuilderStep(
+        HttpClient client, Guid projectId, string step, object data, Guid? expectedToken)
+    {
+        using var response = await client.PutAsJsonAsync($"/api/projects/{projectId}/builder/steps/{step}",
+            new { data, expectedConcurrencyToken = expectedToken });
+        Assert.True(response.IsSuccessStatusCode,
+            $"Builder step {step} failed: {(int)response.StatusCode} {await response.Content.ReadAsStringAsync()}");
+        return (await response.Content.ReadFromJsonAsync<JsonObject>())!["concurrencyToken"]!.GetValue<Guid>();
     }
 
     private static MultipartFormDataContent VoiceForm(bool consent)
