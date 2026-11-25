@@ -485,6 +485,86 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var repeat = await owner.PostAsJsonAsync(generate,
             new { requirementIds = ids, expectedConcurrencyToken = saved.ConcurrencyToken });
         Assert.Equal(HttpStatusCode.Conflict, repeat.StatusCode);
+        using var regenerated = await owner.PostAsJsonAsync(path + "/blueprints/regenerate",
+            new { expectedConcurrencyToken = saved.ConcurrencyToken, expectedRevision = blueprint.Revision });
+        Assert.True(regenerated.StatusCode == HttpStatusCode.OK, await regenerated.Content.ReadAsStringAsync());
+        var newDraft = (await regenerated.Content.ReadFromJsonAsync<ProjectDraftResponse>())!;
+        Assert.Equal(saved.Version + 1, newDraft.Version);
+        Assert.Equal("Preserve my builder input", newDraft.Draft.GetProperty("title").GetString());
+    }
+
+    [Fact]
+    public async Task Regeneration_preserves_protected_items_and_persists_only_valid_new_revisions()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var outsider = CreateClient(_factory.OtherUser);
+        var path = $"/api/projects/{_factory.Project.Id}";
+        var regenerate = path + "/blueprints/regenerate";
+        using var created = await owner.PostAsJsonAsync(path + "/requirements/candidates/manual",
+            new { title = "Dashboard", description = "Show project status" });
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var id = (await created.Content.ReadFromJsonAsync<ReviewedRequirement>())!.Id;
+        using var accepted = await owner.PostAsJsonAsync(path + $"/requirements/{id}/review",
+            new { expectedRevision = 1, decision = "accept" });
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        using var generated = await owner.PostAsJsonAsync(path + "/blueprints/generate",
+            new { requirementIds = new[] { id } });
+        Assert.True(generated.StatusCode == HttpStatusCode.OK, await generated.Content.ReadAsStringAsync());
+        var saved = (await generated.Content.ReadFromJsonAsync<ProjectDraftResponse>())!;
+        var original = (await owner.GetFromJsonAsync<BlueprintVersionResponse>(path + "/blueprints/current"))!.Blueprint!;
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)
+        { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull };
+        var proposal = System.Text.Json.JsonSerializer.SerializeToNode(original, options)!;
+        proposal["revision"] = original.Revision + 1;
+        var componentId = original.Components[0].Id;
+        proposal["components"]![0]!["props"]!["text"] = "Custom title";
+        proposal["components"]![0]!["props"]!["locked"] = true;
+        object Request(Guid token, string[]? editable = null) => new
+        {
+            expectedConcurrencyToken = token, expectedRevision = original.Revision,
+            editableComponentIds = editable, proposal
+        };
+        using var forbidden = await outsider.PostAsJsonAsync(regenerate, Request(saved.ConcurrencyToken));
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        using var stale = await owner.PostAsJsonAsync(regenerate, Request(Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        using var unknown = await owner.PostAsJsonAsync(regenerate, Request(saved.ConcurrencyToken, ["CMP-MISSING"]));
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        using var protectedChange = await owner.PostAsJsonAsync(regenerate, Request(saved.ConcurrencyToken));
+        Assert.Equal(HttpStatusCode.Conflict, protectedChange.StatusCode);
+        var unchanged = (await owner.GetFromJsonAsync<BlueprintVersionResponse>(path + "/blueprints/current"))!;
+        Assert.Equal(saved.Version, unchanged.Version);
+        using var applied = await owner.PostAsJsonAsync(regenerate, Request(saved.ConcurrencyToken, [componentId]));
+        Assert.True(applied.StatusCode == HttpStatusCode.OK, await applied.Content.ReadAsStringAsync());
+        var updated = (await applied.Content.ReadFromJsonAsync<ProjectDraftResponse>())!;
+        Assert.Equal(saved.Version + 1, updated.Version);
+        Assert.NotEqual(saved.ConcurrencyToken, updated.ConcurrencyToken);
+        var current = (await owner.GetFromJsonAsync<BlueprintVersionResponse>(path + "/blueprints/current"))!.Blueprint!;
+        Assert.Equal(original.Revision + 1, current.Revision);
+        Assert.Equal("Custom title", current.Components[0].Props["text"].GetString());
+        Assert.Equal(original.BlueprintId, current.BlueprintId);
+        var history = (await owner.GetFromJsonAsync<BlueprintVersionResponse[]>(path + "/blueprints/versions"))!;
+        Assert.Equal(2, history.Length);
+        Assert.Equal(original.Components[0].Props["text"].GetString(), history[1].Blueprint!.Components[0].Props["text"].GetString());
+
+        // Locked items remain protected even if explicitly selected as editable.
+        proposal["revision"] = current.Revision + 1;
+        proposal["components"]![0]!["props"]!["text"] = "Overwrite locked title";
+        using var locked = await owner.PostAsJsonAsync(regenerate, new
+        {
+            expectedConcurrencyToken = updated.ConcurrencyToken, expectedRevision = current.Revision,
+            editableComponentIds = new[] { componentId }, proposal
+        });
+        Assert.Equal(HttpStatusCode.Conflict, locked.StatusCode);
+        // The deterministic fallback must also reject overwriting locked edits.
+        using var fallback = await owner.PostAsJsonAsync(regenerate, new
+        {
+            expectedConcurrencyToken = updated.ConcurrencyToken, expectedRevision = current.Revision,
+            editableComponentIds = new[] { componentId }
+        });
+        Assert.Equal(HttpStatusCode.Conflict, fallback.StatusCode);
+        Assert.Equal(updated.Version,
+            (await owner.GetFromJsonAsync<BlueprintVersionResponse>(path + "/blueprints/current"))!.Version);
     }
 
     [Fact]
