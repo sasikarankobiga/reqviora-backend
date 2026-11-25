@@ -215,6 +215,7 @@ public static class DependencyInjection
             .AddScoped<ProjectDraftService>()
             .AddScoped<ProjectExportService>()
             .AddScoped<ITokenService, JwtTokenService>()
+            .AddScoped<IEmailTransport, SmtpEmailTransport>()
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IDocumentTextParser, DocumentTextParser>()
             .AddScoped<IFileThreatScanner, ClamAvFileThreatScanner>()

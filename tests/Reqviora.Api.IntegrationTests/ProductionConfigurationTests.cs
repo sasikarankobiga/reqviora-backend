@@ -17,6 +17,9 @@ public sealed class ProductionConfigurationTests
     [Theory]
     [InlineData("Smtp:Password", "")]
     [InlineData("Smtp:UseSsl", "false")]
+    [InlineData("Smtp:TimeoutSeconds", "0")]
+    [InlineData("Smtp:MaxAttempts", "0")]
+    [InlineData("Smtp:BaseRetryMilliseconds", "0")]
     [InlineData("Storage:RequireAntivirus", "false")]
     [InlineData("Storage:AntivirusMaxAttempts", "0")]
     [InlineData("Storage:AntivirusRetryDelayMilliseconds", "5001")]
@@ -93,6 +96,9 @@ public sealed class ProductionConfigurationTests
         ["Smtp:UserName"] = "mailer",
         ["Smtp:Password"] = "from-secret-store",
         ["Smtp:FromAddress"] = "no-reply@example.test",
+        ["Smtp:TimeoutSeconds"] = "30",
+        ["Smtp:MaxAttempts"] = "3",
+        ["Smtp:BaseRetryMilliseconds"] = "250",
         ["AI:Enabled"] = "false"
     };
 

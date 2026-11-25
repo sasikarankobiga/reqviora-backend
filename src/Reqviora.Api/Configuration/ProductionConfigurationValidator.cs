@@ -77,6 +77,12 @@ public static class ProductionConfigurationValidator
                 !string.IsNullOrWhiteSpace(configuration["Smtp:Password"]) &&
                 !string.IsNullOrWhiteSpace(configuration["Smtp:FromAddress"]),
             "Production requires secret-backed SMTP credentials and a sender address.");
+        Require(configuration.GetValue<int>("Smtp:TimeoutSeconds") is >= 1 and <= 120,
+            "Smtp:TimeoutSeconds must be between 1 and 120.");
+        Require(configuration.GetValue<int>("Smtp:MaxAttempts") is >= 1 and <= 5,
+            "Smtp:MaxAttempts must be between 1 and 5.");
+        Require(configuration.GetValue<int>("Smtp:BaseRetryMilliseconds") is >= 10 and <= 5000,
+            "Smtp:BaseRetryMilliseconds must be between 10 and 5000.");
 
         if (configuration.GetValue<bool>("AI:Enabled"))
         {

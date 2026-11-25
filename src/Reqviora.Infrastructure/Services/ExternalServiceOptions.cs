@@ -10,6 +10,9 @@ public sealed class SmtpOptions
     public string Password { get; set; } = "";
     public string FromAddress { get; set; } = "";
     public string FromName { get; set; } = "REQVIORA";
+    public int TimeoutSeconds { get; set; } = 30;
+    public int MaxAttempts { get; set; } = 3;
+    public int BaseRetryMilliseconds { get; set; } = 250;
 }
 
 public sealed class StorageOptions
