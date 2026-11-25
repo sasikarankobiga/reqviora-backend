@@ -57,3 +57,16 @@ public sealed class AiJobOptions
     public int MaxPromptCharacters { get; set; } = 100_000;
     public int MaxResultCharacters { get; set; } = 2_000_000;
 }
+
+public sealed class OcrOptions
+{
+    public const string SectionName = "OCR";
+    public bool Enabled { get; set; }
+    public string Endpoint { get; set; } = "";
+    public string ApiKey { get; set; } = "";
+    public string Provider { get; set; } = "HttpGateway";
+    public string Model { get; set; } = "document-ocr";
+    public int TimeoutSeconds { get; set; } = 120;
+    public int MaxAttempts { get; set; } = 3;
+    public int BaseRetryMilliseconds { get; set; } = 250;
+}

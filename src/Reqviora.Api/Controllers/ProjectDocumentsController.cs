@@ -84,13 +84,15 @@ public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorag
 
     [HttpPost("{documentId:guid}/parse")]
     public async Task<IActionResult> Parse(Guid projectId, Guid documentId,
-        [FromServices] IDocumentTextParser parser, CancellationToken ct)
+        [FromServices] IDocumentTextParser parser,
+        [FromServices] IDocumentOcrProvider ocr,
+        CancellationToken ct)
     {
         await ProjectApiAccess.RequireWriteAsync(db, projectId, ProjectApiAccess.RequireUserId(User), ct);
         var document = await db.ProjectDocuments.AsNoTracking()
             .SingleOrDefaultAsync(item => item.ProjectId == projectId && item.Id == documentId, ct);
         if (document is null) return NotFound();
-        if (document.ParsingStatus is "completed" or "requires_ocr")
+        if (document.ParsingStatus == "completed")
             return Ok(await PersistedResultAsync(document, ct));
         var now = DateTimeOffset.UtcNow;
         if (document.ParsingStatus == "parsing" &&
@@ -125,6 +127,25 @@ public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorag
             await using var stream = await storage.OpenReadAsync(document.StoragePath, ct);
             var input = new DocumentInputRequest(projectId, document.Id, document.FileName, mediaType, stream.Length);
             var result = await parser.ParseAsync(input, stream, ct);
+            if (result.Segments.Count == 0 && mediaType == "application/pdf" && ocr.IsEnabled)
+            {
+                try
+                {
+                    await using var ocrStream = await storage.OpenReadAsync(document.StoragePath, ct);
+                    var ocrResult = await ocr.RecognizeAsync(input, ocrStream, ct);
+                    result = ocrResult with
+                    {
+                        Warnings = result.Warnings.Concat(ocrResult.Warnings).Distinct().ToArray()
+                    };
+                }
+                catch (DocumentOcrException ex)
+                {
+                    result = result with
+                    {
+                        Warnings = result.Warnings.Append($"OCR unavailable: {ex.Message}").ToArray()
+                    };
+                }
+            }
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             await db.ProjectDocumentSegments.Where(segment => segment.ProjectDocumentId == documentId)
                 .ExecuteDeleteAsync(ct);

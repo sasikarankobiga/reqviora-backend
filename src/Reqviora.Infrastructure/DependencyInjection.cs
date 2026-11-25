@@ -183,6 +183,7 @@ public static class DependencyInjection
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
         services.Configure<AiJobOptions>(configuration.GetSection(AiJobOptions.SectionName));
+        services.Configure<OcrOptions>(configuration.GetSection(OcrOptions.SectionName));
         var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         services.AddHttpClient<IAIService, AIService>(client =>
         {
@@ -194,6 +195,14 @@ public static class DependencyInjection
         {
             client.BaseAddress = new Uri(ai.Endpoint, UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ai.TimeoutSeconds, 10, 600));
+        });
+        var ocr = configuration.GetSection(OcrOptions.SectionName).Get<OcrOptions>() ?? new OcrOptions();
+        services.AddHttpClient<IDocumentOcrProvider, HttpDocumentOcrProvider>(client =>
+        {
+            client.BaseAddress = Uri.TryCreate(ocr.Endpoint, UriKind.Absolute, out var endpoint)
+                ? endpoint
+                : new Uri("https://localhost/");
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ocr.TimeoutSeconds, 10, 600));
         });
         if (storage.Provider.Equals("Supabase", StringComparison.OrdinalIgnoreCase))
         {

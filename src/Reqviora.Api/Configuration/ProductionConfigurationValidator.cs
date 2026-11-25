@@ -103,6 +103,22 @@ public static class ProductionConfigurationValidator
                 "AI:Enabled requires a secret-backed API key after G0-07 approval.");
         }
 
+        if (configuration.GetValue<bool>("OCR:Enabled"))
+        {
+            RequireSecureUrl(configuration["OCR:Endpoint"], "OCR:Endpoint");
+            Require(!string.IsNullOrWhiteSpace(configuration["OCR:ApiKey"]),
+                "OCR:Enabled requires a secret-backed API key.");
+            Require(!string.IsNullOrWhiteSpace(configuration["OCR:Provider"]) &&
+                    !string.IsNullOrWhiteSpace(configuration["OCR:Model"]),
+                "OCR provider and model are required.");
+            Require(configuration.GetValue<int>("OCR:TimeoutSeconds") is >= 10 and <= 600,
+                "OCR:TimeoutSeconds must be between 10 and 600.");
+            Require(configuration.GetValue<int>("OCR:MaxAttempts") is >= 1 and <= 5,
+                "OCR:MaxAttempts must be between 1 and 5.");
+            Require(configuration.GetValue<int>("OCR:BaseRetryMilliseconds") is >= 10 and <= 5000,
+                "OCR:BaseRetryMilliseconds must be between 10 and 5000.");
+        }
+
         Require(configuration.GetValue<int>("AIJobs:PollIntervalMilliseconds") is >= 100 and <= 30000,
             "AIJobs:PollIntervalMilliseconds must be between 100 and 30000.");
         Require(configuration.GetValue<int>("AIJobs:LeaseSeconds") is >= 30 and <= 3600,

@@ -51,6 +51,25 @@ public sealed class ProductionConfigurationTests
     }
 
     [Fact]
+    public void Enabled_ocr_requires_secure_endpoint_secret_and_bounded_retries()
+    {
+        var values = Values();
+        values["OCR:Enabled"] = "true";
+        values["OCR:Endpoint"] = "http://ocr.example.test/recognize";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["OCR:Endpoint"] = "https://ocr.example.test/recognize";
+        values["OCR:ApiKey"] = "from-secret-store";
+        values["OCR:Provider"] = "HttpGateway";
+        values["OCR:Model"] = "document-ocr";
+        values["OCR:TimeoutSeconds"] = "120";
+        values["OCR:MaxAttempts"] = "3";
+        values["OCR:BaseRetryMilliseconds"] = "250";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Fact]
     public void Supabase_storage_requires_https_private_bucket_and_secret_backed_service_key()
     {
         var values = Values();
@@ -116,7 +135,8 @@ public sealed class ProductionConfigurationTests
         ["Smtp:TimeoutSeconds"] = "30",
         ["Smtp:MaxAttempts"] = "3",
         ["Smtp:BaseRetryMilliseconds"] = "250",
-        ["AI:Enabled"] = "false"
+        ["AI:Enabled"] = "false",
+        ["OCR:Enabled"] = "false"
     };
 
     private sealed class EnvironmentStub(string environmentName) : IHostEnvironment

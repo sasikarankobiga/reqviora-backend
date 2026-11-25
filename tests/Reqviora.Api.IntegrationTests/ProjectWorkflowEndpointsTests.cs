@@ -17,6 +17,7 @@ using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.VoiceProcessing;
+using Reqviora.Application.Features.DocumentIntelligence;
 using Reqviora.Infrastructure.Services;
 using Reqviora.Application.Features.Projects.DTOs;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
@@ -552,6 +553,62 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Scanned_pdf_is_ocr_processed_and_persisted_with_source_evidence()
+    {
+        using var factory = new WorkflowApiFactory(enableOcrForTest: true);
+        using var owner = CreateClient(factory.Owner, factory);
+        using var form = DocumentForm("scanned.pdf", "application/pdf", "%PDF-scanned-test");
+        using var uploaded = await owner.PostAsync($"/api/projects/{factory.Project.Id}/documents", form);
+        Assert.Equal(HttpStatusCode.Created, uploaded.StatusCode);
+        var documentId = JsonNode.Parse(await uploaded.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+
+        using var parsed = await owner.PostAsync(
+            $"/api/projects/{factory.Project.Id}/documents/{documentId}/parse", null);
+
+        Assert.Equal(HttpStatusCode.OK, parsed.StatusCode);
+        Assert.Contains("OCR recovered requirement", await parsed.Content.ReadAsStringAsync());
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+        var document = await db.ProjectDocuments.AsNoTracking().SingleAsync(item => item.Id == documentId);
+        var segment = await db.ProjectDocumentSegments.AsNoTracking()
+            .SingleAsync(item => item.ProjectDocumentId == documentId);
+        Assert.Equal("completed", document.ParsingStatus);
+        Assert.Equal(documentId.ToString("D"), segment.SourceId);
+        Assert.Equal("page:1:ocr:offset:0", segment.Locator);
+        Assert.Equal(1, factory.Ocr.Calls);
+    }
+
+    [Fact]
+    public async Task Ocr_outage_preserves_retryable_requires_ocr_state()
+    {
+        using var factory = new WorkflowApiFactory(enableOcrForTest: true);
+        factory.Ocr.Fail = true;
+        using var owner = CreateClient(factory.Owner, factory);
+        using var form = DocumentForm("scanned.pdf", "application/pdf", "%PDF-scanned-test");
+        using var uploaded = await owner.PostAsync($"/api/projects/{factory.Project.Id}/documents", form);
+        var documentId = JsonNode.Parse(await uploaded.Content.ReadAsStringAsync())!["id"]!.GetValue<Guid>();
+
+        using var parsed = await owner.PostAsync(
+            $"/api/projects/{factory.Project.Id}/documents/{documentId}/parse", null);
+
+        Assert.Equal(HttpStatusCode.OK, parsed.StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+        var document = await db.ProjectDocuments.AsNoTracking().SingleAsync(item => item.Id == documentId);
+        Assert.Equal("requires_ocr", document.ParsingStatus);
+        Assert.Contains("OCR unavailable", document.ParsingWarningsJson);
+        Assert.False(await db.ProjectDocumentSegments.AnyAsync(item => item.ProjectDocumentId == documentId));
+
+        factory.Ocr.Fail = false;
+        using var retried = await owner.PostAsync(
+            $"/api/projects/{factory.Project.Id}/documents/{documentId}/parse", null);
+        Assert.Equal(HttpStatusCode.OK, retried.StatusCode);
+        db.ChangeTracker.Clear();
+        document = await db.ProjectDocuments.AsNoTracking().SingleAsync(item => item.Id == documentId);
+        Assert.Equal("completed", document.ParsingStatus);
+    }
+
+    [Fact]
     public async Task Owner_can_read_workspace_and_project_overview()
     {
         using var client = CreateClient(_factory.Owner);
@@ -998,13 +1055,16 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         public Project Project { get; }
         public TestFileStorage Storage { get; } = new();
         public TestVoiceTranscriber Voice { get; } = new();
+        public TestOcrProvider Ocr { get; } = new();
 
         private readonly bool _enableAiForTest;
+        private readonly bool _enableOcrForTest;
         public TestCandidateStore CandidateStore { get; } = new();
 
-        public WorkflowApiFactory(bool enableAiForTest = false)
+        public WorkflowApiFactory(bool enableAiForTest = false, bool enableOcrForTest = false)
         {
             _enableAiForTest = enableAiForTest;
+            _enableOcrForTest = enableOcrForTest;
             Workspace = new Workspace { Name = "Owner workspace", OwnerUserId = Owner.Id };
             Project = new Project
             {
@@ -1049,6 +1109,13 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                     services.AddSingleton<IStructuredAiProvider>(new TestExtractionProvider());
                     services.RemoveAll<IVoiceTranscriber>();
                     services.AddSingleton<IVoiceTranscriber>(Voice);
+                }
+                if (_enableOcrForTest)
+                {
+                    services.RemoveAll<IDocumentTextParser>();
+                    services.AddSingleton<IDocumentTextParser>(new EmptyDocumentParser());
+                    services.RemoveAll<IDocumentOcrProvider>();
+                    services.AddSingleton<IDocumentOcrProvider>(Ocr);
                 }
             });
         }
@@ -1108,6 +1175,38 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                 return Task.FromResult(new TranscriptDraft(
                     Guid.NewGuid(), audioFileId, request.LanguageCode, text, text, 1,
                     [new TranscriptSegment(0, 5000, text)]));
+            }
+        }
+
+        public sealed class EmptyDocumentParser : IDocumentTextParser
+        {
+            public Task<DocumentParseResult> ParseAsync(
+                Reqviora.Application.Features.Documents.DocumentInputRequest document,
+                Stream fileContent,
+                CancellationToken cancellationToken = default) =>
+                Task.FromResult(new DocumentParseResult(document.UploadedFileId, [],
+                    ["No extractable text was found."]));
+        }
+
+        public sealed class TestOcrProvider : IDocumentOcrProvider
+        {
+            public bool IsEnabled => true;
+            public int Calls { get; private set; }
+            public bool Fail { get; set; }
+
+            public Task<DocumentParseResult> RecognizeAsync(
+                Reqviora.Application.Features.Documents.DocumentInputRequest document,
+                Stream fileContent,
+                CancellationToken cancellationToken = default)
+            {
+                Calls++;
+                if (Fail)
+                    throw new DocumentOcrException("Simulated OCR outage.");
+                const string text = "OCR recovered requirement";
+                var evidence = new SourceEvidenceRef(document.UploadedFileId.ToString("D"),
+                    "page:1:ocr:offset:0", 1, 0, text.Length, text);
+                return Task.FromResult(new DocumentParseResult(document.UploadedFileId,
+                    [new ParsedDocumentSegment(0, text, evidence)], []));
             }
         }
 
