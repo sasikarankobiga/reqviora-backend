@@ -117,4 +117,132 @@ END;
 COMMIT;
 GO
 
--- End of REQVIORA pending SQL Server deployment script.
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [ConcurrencyToken] uniqueidentifier NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000';
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [MediaType] nvarchar(150) NOT NULL DEFAULT N'';
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [ParseErrorCode] nvarchar(100) NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [ParseLeaseExpiresAtUnixTimeMilliseconds] bigint NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [ParsedAt] datetimeoffset NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [ParsingStatus] nvarchar(30) NOT NULL DEFAULT N'pending';
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [ParsingWarningsJson] nvarchar(max) NOT NULL DEFAULT N'[]';
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [Sha256] nvarchar(64) NULL;
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    ALTER TABLE [ProjectDocuments] ADD [SizeBytes] bigint NOT NULL DEFAULT CAST(0 AS bigint);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    CREATE TABLE [ProjectDocumentSegments] (
+        [Id] uniqueidentifier NOT NULL,
+        [ProjectDocumentId] uniqueidentifier NOT NULL,
+        [Sequence] int NOT NULL,
+        [Text] nvarchar(max) NOT NULL,
+        [SourceId] nvarchar(100) NOT NULL,
+        [Locator] nvarchar(500) NOT NULL,
+        [PageNumber] int NULL,
+        [StartOffset] int NOT NULL,
+        [EndOffset] int NOT NULL,
+        CONSTRAINT [PK_ProjectDocumentSegments] PRIMARY KEY ([Id]),
+        CONSTRAINT [FK_ProjectDocumentSegments_ProjectDocuments_ProjectDocumentId] FOREIGN KEY ([ProjectDocumentId]) REFERENCES [ProjectDocuments] ([Id]) ON DELETE CASCADE
+    );
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    CREATE INDEX [IX_ProjectDocuments_ProjectId_ParsingStatus] ON [ProjectDocuments] ([ProjectId], [ParsingStatus]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    EXEC(N'CREATE UNIQUE INDEX [IX_ProjectDocuments_ProjectId_Sha256] ON [ProjectDocuments] ([ProjectId], [Sha256]) WHERE [Sha256] IS NOT NULL');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    CREATE UNIQUE INDEX [IX_ProjectDocumentSegments_ProjectDocumentId_Sequence] ON [ProjectDocumentSegments] ([ProjectDocumentId], [Sequence]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261125090548_PersistDocumentIntelligence'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261125090548_PersistDocumentIntelligence', N'10.0.15');
+END;
+
+COMMIT;
+GO
+-- End of reviewed pending SQL Server migrations.

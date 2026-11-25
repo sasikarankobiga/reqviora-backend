@@ -403,9 +403,35 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var parsed = await owner.PostAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}/parse", null);
         Assert.Equal(HttpStatusCode.OK, parsed.StatusCode);
         Assert.Contains("REQVIORA requirements", await parsed.Content.ReadAsStringAsync());
+        using var parsedAgain = await owner.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/documents/{documentId}/parse", null);
+        Assert.Equal(HttpStatusCode.OK, parsedAgain.StatusCode);
+        Assert.Contains("REQVIORA requirements", await parsedAgain.Content.ReadAsStringAsync());
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            var persisted = await db.ProjectDocuments.AsNoTracking().SingleAsync(item => item.Id == documentId);
+            Assert.Equal("completed", persisted.ParsingStatus);
+            Assert.Equal("text/plain", persisted.MediaType);
+            Assert.NotNull(persisted.Sha256);
+            Assert.NotNull(persisted.ParsedAt);
+            var segment = await db.ProjectDocumentSegments.AsNoTracking()
+                .SingleAsync(item => item.ProjectDocumentId == documentId);
+            Assert.Equal("REQVIORA requirements", segment.Text);
+            Assert.Equal(documentId.ToString("D"), segment.SourceId);
+        }
         using var listed = await owner.GetAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}");
         Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
-        Assert.DoesNotContain("storagePath", await listed.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        var listedBody = await listed.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("storagePath", listedBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("completed", listedBody);
+        Assert.DoesNotContain("sha256", listedBody, StringComparison.OrdinalIgnoreCase);
+
+        using var duplicateForm = DocumentForm("requirements-copy.txt", "text/plain");
+        using var duplicate = await owner.PostAsync(
+            $"/api/projects/{_factory.Project.Id}/documents", duplicateForm);
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        Assert.Equal(1, _factory.Storage.Saves);
         using var outsider = CreateClient(_factory.OtherUser);
         using var forbiddenParse = await outsider.PostAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}/parse", null);
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenParse.StatusCode);
@@ -418,7 +444,7 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         Assert.Equal(1, _factory.Storage.Saves);
 
         _factory.Storage.RejectNext = true;
-        using var infectedForm = DocumentForm("infected.txt", "text/plain");
+        using var infectedForm = DocumentForm("infected.txt", "text/plain", "simulated infected content");
         using var infected = await owner.PostAsync(
             $"/api/projects/{_factory.Project.Id}/documents",
             infectedForm);
@@ -834,10 +860,13 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         return BlueprintJsonContract.Parse(json.ToJsonString());
     }
 
-    private static MultipartFormDataContent DocumentForm(string fileName, string mediaType)
+    private static MultipartFormDataContent DocumentForm(
+        string fileName,
+        string mediaType,
+        string content = "REQVIORA requirements")
     {
         var form = new MultipartFormDataContent();
-        var file = new ByteArrayContent(Encoding.UTF8.GetBytes("REQVIORA requirements"));
+        var file = new ByteArrayContent(Encoding.UTF8.GetBytes(content));
         file.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
         form.Add(file, "file", fileName);
         return form;

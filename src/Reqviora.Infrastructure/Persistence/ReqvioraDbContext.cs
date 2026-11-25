@@ -16,6 +16,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
+    public DbSet<ProjectDocumentSegment> ProjectDocumentSegments => Set<ProjectDocumentSegment>();
     public DbSet<Requirement> Requirements => Set<Requirement>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AccountActionToken> AccountActionTokens => Set<AccountActionToken>();
@@ -112,8 +113,29 @@ public class ReqvioraDbContext : DbContext
         modelBuilder.Entity<Component>().Property(component => component.Type).HasMaxLength(100).IsRequired();
         modelBuilder.Entity<Feature>().Property(feature => feature.Name).HasMaxLength(200).IsRequired();
         modelBuilder.Entity<NavigationRoute>().Property(route => route.Path).HasMaxLength(500).IsRequired();
-        modelBuilder.Entity<ProjectDocument>().Property(document => document.FileName).HasMaxLength(255).IsRequired();
-        modelBuilder.Entity<ProjectDocument>().Property(document => document.StoragePath).HasMaxLength(1000).IsRequired();
+        modelBuilder.Entity<ProjectDocument>(entity =>
+        {
+            entity.HasIndex(document => new { document.ProjectId, document.Sha256 }).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[Sha256] IS NOT NULL" : "\"Sha256\" IS NOT NULL");
+            entity.HasIndex(document => new { document.ProjectId, document.ParsingStatus });
+            entity.Property(document => document.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(document => document.StoragePath).HasMaxLength(1000).IsRequired();
+            entity.Property(document => document.MediaType).HasMaxLength(150).IsRequired();
+            entity.Property(document => document.Sha256).HasMaxLength(64);
+            entity.Property(document => document.ParsingStatus).HasMaxLength(30).HasDefaultValue("pending").IsRequired();
+            entity.Property(document => document.ParseErrorCode).HasMaxLength(100);
+            entity.Property(document => document.ParsingWarningsJson).HasDefaultValue("[]").IsRequired();
+            entity.Property(document => document.ConcurrencyToken).IsConcurrencyToken();
+        });
+        modelBuilder.Entity<ProjectDocumentSegment>(entity =>
+        {
+            entity.HasIndex(segment => new { segment.ProjectDocumentId, segment.Sequence }).IsUnique();
+            entity.Property(segment => segment.Text).IsRequired();
+            entity.Property(segment => segment.SourceId).HasMaxLength(100).IsRequired();
+            entity.Property(segment => segment.Locator).HasMaxLength(500).IsRequired();
+            entity.HasOne<ProjectDocument>().WithMany().HasForeignKey(segment => segment.ProjectDocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
         modelBuilder.Entity<Requirement>().Property(requirement => requirement.Title).HasMaxLength(300).IsRequired();
         modelBuilder.Entity<Screen>().Property(screen => screen.Name).HasMaxLength(200).IsRequired();
 
