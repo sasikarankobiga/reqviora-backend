@@ -3,13 +3,14 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Security;
 
 namespace Reqviora.Api.Controllers;
 
-[ApiController, Authorize, Route("api/security/mfa")]
+[ApiController, Authorize, Route("api/security/mfa"), EnableRateLimiting("authentication")]
 public sealed class MfaController(ReqvioraDbContext db, IDataProtectionProvider protection) : ControllerBase
 {
     public sealed record VerifyMfa(string Code);
@@ -22,6 +23,8 @@ public sealed class MfaController(ReqvioraDbContext db, IDataProtectionProvider 
     {
         if (!UserId(out var id)) return Unauthorized();
         var user = await db.Users.SingleAsync(x => x.Id == id, ct);
+        if (await security.IsAdminAsync(user, ct) && user.MfaEnabled)
+            return Problem(title: "Administrator MFA rotation requires supervised recovery.", statusCode: 403);
         if (user.MfaEnabled && (string.IsNullOrWhiteSpace(currentCode) || !security.ValidateOtp(user, currentCode)))
             return Unauthorized();
         var secret = RandomNumberGenerator.GetBytes(20);
@@ -51,6 +54,8 @@ public sealed class MfaController(ReqvioraDbContext db, IDataProtectionProvider 
     {
         if (!UserId(out var id)) return Unauthorized();
         var user = await db.Users.SingleAsync(x => x.Id == id, ct);
+        if (await security.IsAdminAsync(user, ct))
+            return Problem(title: "Administrator MFA cannot be disabled.", statusCode: 403);
         if (!security.ValidateOtp(user, request.Code)) return Unauthorized();
         user.MfaEnabled = false; user.MfaSecretProtected = null; user.RecoveryCodeHashes = null;
         await db.SaveChangesAsync(ct);

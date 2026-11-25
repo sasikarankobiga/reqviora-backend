@@ -41,11 +41,14 @@ public sealed class AuthService(
             return Result<AuthResponseDto>.Failure("Email verification required.");
 
         var otpRequired = await loginSecurity.RequiresOtpAsync(user, ipAddress, deviceId, cancellationToken);
-        if (otpRequired && (string.IsNullOrWhiteSpace(request.OtpCode) || !loginSecurity.ValidateOtp(user, request.OtpCode)))
+        if (otpRequired && !await loginSecurity.VerifyLoginOtpAsync(user, ipAddress, deviceId, request.OtpCode, cancellationToken))
         {
             await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, false, true, cancellationToken);
             return Result<AuthResponseDto>.Failure("One-time password required.");
         }
+
+        if (!otpRequired && !string.IsNullOrWhiteSpace(request.OtpCode))
+            return Result<AuthResponseDto>.Failure("No active login challenge. Sign in again without a code.");
 
         if (verification == PasswordVerificationResult.SuccessRehashNeeded)
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
@@ -85,6 +88,10 @@ public sealed class AuthService(
         var now = timeProvider.GetUtcNow();
         if (existingToken is null || !existingToken.IsActive(now) || !existingToken.User.EmailVerified)
             return Result<AuthResponseDto>.Failure("Invalid or expired refresh token.");
+
+        // Existing refresh tokens do not record MFA provenance. Require a new MFA login for administrators.
+        if (await loginSecurity.IsAdminAsync(existingToken.User, cancellationToken))
+            return Result<AuthResponseDto>.Failure("Administrator sign-in with MFA required.");
 
         var newRefreshToken = tokens.CreateRefreshToken();
         existingToken.RevokedAt = now;
@@ -156,6 +163,8 @@ public sealed class AuthService(
         public static readonly NoLoginSecurity Instance = new();
         public Task<bool> RequiresOtpAsync(User user, string ipAddress, string deviceId, CancellationToken cancellationToken) => Task.FromResult(false);
         public bool ValidateOtp(User user, string code) => true;
+        public Task<bool> VerifyLoginOtpAsync(User user, string ipAddress, string deviceId, string? code, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<bool> IsAdminAsync(User user, CancellationToken cancellationToken) => Task.FromResult(false);
         public Task RecordAsync(User? user, string normalizedEmail, string ipAddress, string deviceId, bool succeeded,
             bool otpRequired, CancellationToken cancellationToken) => Task.CompletedTask;
     }

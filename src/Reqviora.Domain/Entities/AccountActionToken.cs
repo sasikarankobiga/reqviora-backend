@@ -6,7 +6,9 @@ public enum AccountActionPurpose
 {
     EmailVerification = 1,
     PasswordReset = 2,
-    EmailChange = 3
+    EmailChange = 3,
+    SuspiciousLogin = 4,
+    LoginTotpUse = 5
 }
 
 public sealed class AccountActionToken : BaseEntity

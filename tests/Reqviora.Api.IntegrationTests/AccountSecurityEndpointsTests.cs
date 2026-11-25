@@ -44,6 +44,73 @@ public sealed class AccountSecurityEndpointsTests
     }
 
     [Fact]
+    public async Task Suspicious_login_without_enrolled_mfa_uses_single_use_email_code()
+    {
+        using var factory = new AccountApiFactory();
+        factory.VerifySeedUser();
+        using var client = factory.CreateClient();
+        var address = factory.User.Email;
+        const string password = "Initial-Password-123!";
+        async Task<HttpResponseMessage> Login(string device, string? code = null) =>
+            await client.PostAsJsonAsync("/api/auth/login", new { email = address, password, deviceId = device, otpCode = code });
+        using var first = await Login("known-device");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(0, factory.Email.Count);
+        using var challenge = await Login("new-device");
+        Assert.Equal(HttpStatusCode.Unauthorized, challenge.StatusCode);
+        var otp = factory.Email.LastBody();
+        Assert.Matches("^[0-9]{6}$", otp);
+        using var wrongDevice = await Login("another-device", otp);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongDevice.StatusCode);
+        using var accepted = await Login("new-device", otp);
+        Assert.True(accepted.StatusCode == HttpStatusCode.OK, await accepted.Content.ReadAsStringAsync());
+        using var replay = await Login("new-device", otp);
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+        using var normal = await Login("new-device");
+        Assert.Equal(HttpStatusCode.OK, normal.StatusCode);
+    }
+
+    [Fact]
+    public async Task Suspicious_login_wrong_code_consumes_challenge_and_expired_code_is_rejected()
+    {
+        using var factory = new AccountApiFactory();
+        factory.VerifySeedUser();
+        using var client = factory.CreateClient();
+        async Task<HttpResponseMessage> Login(string device, string? code = null) =>
+            await client.PostAsJsonAsync("/api/auth/login", new
+            { email = factory.User.Email, password = "Initial-Password-123!", deviceId = device, otpCode = code });
+        using var first = await Login("known");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        using var challenge = await Login("new");
+        Assert.Equal(HttpStatusCode.Unauthorized, challenge.StatusCode);
+        var otp = factory.Email.LastBody();
+        var wrongCode = otp == "000000" ? "000001" : "000000";
+        using var wrong = await Login("new", wrongCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        using var used = await Login("new", otp);
+        Assert.Equal(HttpStatusCode.Unauthorized, used.StatusCode);
+        using var second = await Login("new");
+        Assert.Equal(HttpStatusCode.Unauthorized, second.StatusCode);
+        var secondOtp = factory.Email.LastBody();
+        Assert.Equal(2, factory.Email.Count);
+        factory.ExpireAccountTokens();
+        using var expired = await Login("new", secondOtp);
+        Assert.Equal(HttpStatusCode.Unauthorized, expired.StatusCode);
+    }
+
+    [Fact]
+    public async Task Configured_admin_without_mfa_cannot_login_or_receive_email_otp()
+    {
+        using var factory = new AccountApiFactory(admin: true);
+        factory.VerifySeedUser();
+        using var client = factory.CreateClient();
+        using var response = await client.PostAsJsonAsync("/api/auth/login", new
+        { email = factory.User.Email, password = "Initial-Password-123!", deviceId = "known" });
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, factory.Email.Count);
+    }
+
+    [Fact]
     public async Task Verification_resend_is_anonymous_and_does_not_reveal_account_existence()
     {
         using var factory = new AccountApiFactory();
@@ -178,6 +245,7 @@ public sealed class AccountSecurityEndpointsTests
     private sealed class AccountApiFactory : WebApplicationFactory<Program>
     {
         private readonly SqliteConnection _connection = new("Data Source=:memory:");
+        private readonly bool _admin;
 
         public User User { get; } = new()
         {
@@ -190,8 +258,9 @@ public sealed class AccountSecurityEndpointsTests
         public CapturingEmailService Email { get; } = new();
         public RefreshToken RefreshToken { get; }
 
-        public AccountApiFactory()
+        public AccountApiFactory(bool admin = false)
         {
+            _admin = admin;
             User.PasswordHash = new PasswordHasher<User>().HashPassword(User, "Initial-Password-123!");
             RefreshToken = new RefreshToken
             {
@@ -232,6 +301,14 @@ public sealed class AccountSecurityEndpointsTests
             return (db.Users.AsNoTracking().Single(), db.RefreshTokens.AsNoTracking().Single());
         }
 
+        public void VerifySeedUser()
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            db.Users.Single().EmailVerified = true;
+            db.SaveChanges();
+        }
+
         public void ExpireAccountTokens()
         {
             using var scope = Services.CreateScope();
@@ -245,6 +322,7 @@ public sealed class AccountSecurityEndpointsTests
             builder.UseSetting("ConnectionStrings:ReqvioraDatabase", "Host=localhost;Database=unused");
             builder.UseSetting("Jwt:Key", "account-test-signing-key-at-least-32-characters");
             builder.UseSetting("AccountLinks:BaseUrl", "https://app.example.test");
+            if (_admin) builder.UseSetting("Security:AdminEmails:0", User.Email);
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
@@ -266,6 +344,8 @@ public sealed class AccountSecurityEndpointsTests
     public sealed class CapturingEmailService : IEmailService
     {
         private readonly List<string> _bodies = [];
+        public int Count => _bodies.Count;
+        public string LastBody() => _bodies[^1];
 
         public Task SendAsync(
             string to,

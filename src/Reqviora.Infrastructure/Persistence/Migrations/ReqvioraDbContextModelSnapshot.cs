@@ -808,6 +808,7 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TokenHash")
@@ -1035,6 +1036,7 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(512)");
 
                     b.Property<string>("RecoveryCodeHashes")
+                        .IsConcurrencyToken()
                         .HasColumnType("text");
 
                     b.Property<Guid?>("RoleId")

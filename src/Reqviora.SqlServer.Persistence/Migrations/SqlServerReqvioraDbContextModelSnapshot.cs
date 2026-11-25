@@ -829,6 +829,7 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
+                        .IsConcurrencyToken()
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("TokenHash")
@@ -1060,6 +1061,7 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .HasColumnType("nvarchar(512)");
 
                     b.Property<string>("RecoveryCodeHashes")
+                        .IsConcurrencyToken()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid?>("RoleId")
