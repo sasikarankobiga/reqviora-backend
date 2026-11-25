@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Reqviora.Api.Features.ProjectWorkflow;
+using Reqviora.Application.Features.FeaturesAndScreens;
+using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Infrastructure.Services;
 
@@ -50,6 +52,58 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
             request.ExpectedConcurrencyToken,
             cancellationToken);
         return Ok(ProjectApiAccess.ToResponse(draft));
+    }
+
+    public sealed record GenerateBlueprintRequest(string[] RequirementIds, Guid? ExpectedConcurrencyToken);
+
+    [HttpPost("generate")]
+    [ProducesResponseType<ProjectDraftResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ProjectDraftResponse>> Generate(
+        Guid projectId, GenerateBlueprintRequest request,
+        [FromServices] IRequirementReviewStore reviews,
+        [FromServices] IBlueprintDraftGenerator generator,
+        CancellationToken cancellationToken)
+    {
+        var userId = UserId;
+        await ProjectApiAccess.RequireWriteAsync(db, projectId, userId, cancellationToken);
+        if (request.RequirementIds is null || request.RequirementIds.Length is < 1 or > 50 ||
+            request.RequirementIds.Any(id => string.IsNullOrWhiteSpace(id) || id.Length > 100) ||
+            request.RequirementIds.Distinct(StringComparer.Ordinal).Count() != request.RequirementIds.Length)
+            return BadRequest("Select one to fifty distinct requirement IDs.");
+
+        var draft = await drafts.ResumeAsync(projectId, userId, cancellationToken);
+        if (draft?.ConcurrencyToken != request.ExpectedConcurrencyToken)
+            return Conflict("The draft changed. Reload and retry.");
+        if (draft?.ApprovedRevisionId is not null ||
+            (await ProjectApiAccess.FindCurrentVersionAsync(db, projectId, cancellationToken))?.BlueprintJson is not null)
+            return Conflict("A Blueprint already exists. Initial generation cannot overwrite it.");
+
+        var confirmed = new List<ReviewedRequirement>();
+        foreach (var id in request.RequirementIds)
+        {
+            var snapshot = await reviews.FindAsync(projectId, id, cancellationToken);
+            if (snapshot is null || snapshot.ProjectId != projectId)
+                return NotFound("A selected requirement does not exist in this project.");
+            if (snapshot.Requirement.Status != RequirementReviewStatus.Confirmed)
+                return Conflict("Every selected requirement must be human-confirmed before generation.");
+            confirmed.Add(snapshot.Requirement);
+        }
+
+        var blueprint = InitialBlueprintPlanner.Generate(generator, projectId, confirmed);
+        // Review storage is independent of the draft DB. Detect review changes observed
+        // during planning; approval-time verification is still required separately.
+        foreach (var requirement in confirmed)
+        {
+            var current = await reviews.FindAsync(projectId, requirement.Id, cancellationToken);
+            if (current is null || current.ProjectId != projectId ||
+                current.Requirement.Revision != requirement.Revision ||
+                current.Requirement.Status != RequirementReviewStatus.Confirmed)
+                return Conflict("A selected requirement changed. Reload and retry.");
+        }
+
+        var saved = await drafts.SaveDesignAsync(projectId, userId, draft?.DraftJson ?? "{}",
+            blueprint, request.ExpectedConcurrencyToken, cancellationToken);
+        return Ok(ProjectApiAccess.ToResponse(saved));
     }
 
     [HttpPost("validate")]

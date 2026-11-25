@@ -419,6 +419,75 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Initial_blueprint_generation_uses_confirmed_review_records_and_preserves_draft()
+    {
+        using var owner = CreateClient(_factory.Owner);
+        using var outsider = CreateClient(_factory.OtherUser);
+        using var anonymous = _factory.CreateClient();
+        var path = $"/api/projects/{_factory.Project.Id}";
+        var generate = path + "/blueprints/generate";
+        var ids = new List<string>();
+        foreach (var title in new[] { "Login", "Dashboard" })
+        {
+            using var created = await owner.PostAsJsonAsync(path + "/requirements/candidates/manual",
+                new { title, description = "Requirement for " + title });
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            ids.Add((await created.Content.ReadFromJsonAsync<ReviewedRequirement>())!.Id);
+        }
+        using var noAuth = await anonymous.PostAsJsonAsync(generate, new { requirementIds = ids });
+        Assert.Equal(HttpStatusCode.Unauthorized, noAuth.StatusCode);
+        using var denied = await outsider.PostAsJsonAsync(generate, new { requirementIds = ids });
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var missing = await owner.PostAsJsonAsync(generate, new { requirementIds = new[] { "REQ-MISSING" } });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        using var duplicate = await owner.PostAsJsonAsync(generate, new { requirementIds = new[] { ids[0], ids[0] } });
+        Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+        using var unconfirmed = await owner.PostAsJsonAsync(generate, new { requirementIds = ids });
+        Assert.Equal(HttpStatusCode.Conflict, unconfirmed.StatusCode);
+        using var absent = await owner.GetAsync(path + "/blueprints/current");
+        Assert.Equal(HttpStatusCode.NotFound, absent.StatusCode);
+
+        foreach (var id in ids)
+        {
+            using var review = await owner.PostAsJsonAsync(path + $"/requirements/{id}/review",
+                new { expectedRevision = 1, decision = "accept" });
+            Assert.Equal(HttpStatusCode.OK, review.StatusCode);
+        }
+        using var first = await owner.PutAsJsonAsync(path + "/drafts/current",
+            new { draft = new { title = "Preserve my builder input" } });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var initial = (await first.Content.ReadFromJsonAsync<ProjectDraftResponse>())!;
+        using var stale = await owner.PostAsJsonAsync(generate, new { requirementIds = ids });
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        using var generated = await owner.PostAsJsonAsync(generate,
+            new { requirementIds = ids, expectedConcurrencyToken = initial.ConcurrencyToken });
+        Assert.True(generated.StatusCode == HttpStatusCode.OK, await generated.Content.ReadAsStringAsync());
+        var saved = (await generated.Content.ReadFromJsonAsync<ProjectDraftResponse>())!;
+        Assert.Equal("Preserve my builder input", saved.Draft.GetProperty("title").GetString());
+        Assert.Equal(initial.Version + 1, saved.Version);
+        Assert.NotEqual(initial.ConcurrencyToken, saved.ConcurrencyToken);
+        Assert.Null(saved.ApprovedRevisionId);
+        using var current = await owner.GetAsync(path + "/blueprints/current");
+        Assert.Equal(HttpStatusCode.OK, current.StatusCode);
+        var blueprint = (await current.Content.ReadFromJsonAsync<BlueprintVersionResponse>())!.Blueprint!;
+        Assert.Equal("draft", blueprint.Lifecycle);
+        Assert.Equal(ids.ToArray(), blueprint.Requirements.Select(x => x.Id).ToArray());
+        Assert.All(blueprint.Requirements, x => Assert.Equal(_factory.Owner.Id.ToString(), x.ConfirmedBy));
+        Assert.Equal(2, blueprint.Features.Count);
+        Assert.Equal(2, blueprint.Screens.Count);
+        Assert.Equal(5, blueprint.Components.Count);
+        Assert.Single(blueprint.Navigation);
+        Assert.True(BlueprintContractValidator.Validate(blueprint).IsValid);
+        using var validate = await owner.PostAsJsonAsync(path + "/blueprints/validate",
+            new { expectedConcurrencyToken = saved.ConcurrencyToken });
+        Assert.Equal(HttpStatusCode.OK, validate.StatusCode);
+        Assert.True((await validate.Content.ReadFromJsonAsync<ValidationRunResponse>())!.Passed);
+        using var repeat = await owner.PostAsJsonAsync(generate,
+            new { requirementIds = ids, expectedConcurrencyToken = saved.ConcurrencyToken });
+        Assert.Equal(HttpStatusCode.Conflict, repeat.StatusCode);
+    }
+
+    [Fact]
     public async Task Blueprint_graph_approval_and_verified_export_are_available_to_owner()
     {
         using var client = CreateClient(_factory.Owner);
