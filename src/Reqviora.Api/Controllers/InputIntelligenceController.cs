@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
+using Reqviora.Application.Features.RequirementReview;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -40,6 +42,7 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
         Guid projectId,
         ExtractRequirementsRequest body,
         [FromServices] IStructuredAiProvider provider,
+        [FromServices] IRequirementCandidateStore candidates,
         CancellationToken cancellationToken)
     {
         var userId = ProjectApiAccess.RequireUserId(User);
@@ -51,10 +54,34 @@ public sealed class InputIntelligenceController(ReqvioraDbContext db, IOptions<A
             throw new ArgumentException("AI text extraction consent is required.", nameof(body));
         if (!options.Value.Enabled)
             return Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "AI provider approval is pending.");
+        if (body.Evidence is null || body.Evidence.Count is < 1 or > 1000 ||
+            body.Evidence.Any(item => item is null || string.IsNullOrWhiteSpace(item.SourceId) ||
+                string.IsNullOrWhiteSpace(item.Locator) || string.IsNullOrWhiteSpace(item.Quote) ||
+                !body.InputText.Contains(item.Quote, StringComparison.Ordinal)))
+            throw new ArgumentException("Evidence quotes must occur in the submitted text.");
+        // Supply the evidence references the provider is required to cite.
+        request = request with { InputText = JsonSerializer.Serialize(new
+        {
+            text = body.InputText,
+            evidence = body.Evidence
+        }, new JsonSerializerOptions(JsonSerializerDefaults.Web)) };
+        AiContractValidator.Validate(request);
         var response = await provider.ExecuteAsync(request, cancellationToken);
         if (response.Status != AiRunStatus.Completed)
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new { response.ErrorCode });
-        return Ok(RequirementExtractionValidator.Parse(request, response, body.Evidence));
+        RequirementExtractionPayload payload;
+        try
+        {
+            payload = RequirementCandidateRegistration.AssignIds(
+                RequirementExtractionValidator.Parse(request, response, body.Evidence));
+        }
+        catch (ArgumentException)
+        {
+            return Problem(statusCode: StatusCodes.Status502BadGateway, title: "Invalid AI extraction output.");
+        }
+        var suggested = payload.Candidates.Select(RequirementReviewService.CreateCandidate).ToArray();
+        await candidates.InsertAsync(projectId, suggested, cancellationToken);
+        return Ok(payload);
     }
 
     [HttpPost("voice/transcribe")]

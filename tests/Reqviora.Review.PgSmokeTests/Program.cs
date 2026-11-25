@@ -63,50 +63,16 @@ await using (var schema = new NpgsqlCommand(await File.ReadAllTextAsync(schemaPa
 try
 {
     // Seed one temporary requirement.
-    const string seedSql = """
-        INSERT INTO reqviora_review.requirements
-        (
-            project_id,
-            requirement_id,
-            title,
-            description,
-            status,
-            revision,
-            evidence_json
-        )
-        VALUES
-        (
-            @project_id,
-            @requirement_id,
-            @title,
-            @description,
-            'Suggested',
-            1,
-            @evidence_json
-        );
-        """;
-
-    await using (var seed =
-        new NpgsqlCommand(seedSql, connection))
-    {
-        AddIdentity(seed);
-
-        seed.Parameters.AddWithValue(
-            "title", NpgsqlDbType.Varchar, "Login");
-
-        seed.Parameters.AddWithValue(
-            "description",
-            NpgsqlDbType.Varchar,
-            "User login requirement");
-
-        seed.Parameters.AddWithValue(
-            "evidence_json",
-            NpgsqlDbType.Jsonb,
-            JsonSerializer.Serialize(evidence));
-
-        await seed.ExecuteNonQueryAsync();
-        inserted = true;
-    }
+    var candidateStore = new RequirementCandidateStore(connectionString, sqlServer: false);
+    var candidate = new ReviewedRequirement(requirementId, "Login", "User login requirement",
+        RequirementReviewStatus.Suggested, 1, evidence, null, null);
+    await candidateStore.InsertAsync(projectId, new[] { candidate });
+    inserted = true;
+    var page = await candidateStore.ListAsync(projectId, 0, 10);
+    Check(page.Count == 1 && page[0].Id == requirementId && page[0].Status == RequirementReviewStatus.Suggested,
+        "Candidate insert and list share the review table");
+    Check((await candidateStore.ListAsync(Guid.NewGuid(), 0, 10)).Count == 0, "Candidate listing isolates projects");
+    Check((await candidateStore.ListAsync(projectId, 1, 10)).Count == 0, "Candidate listing honors pagination");
 
     var store = new PostgresRequirementReviewStore(
         connectionString);
@@ -140,6 +106,9 @@ try
     Check(saved, "Review revision commits");
 
     // TEST 3: Confirmed requirement persisted.
+    Check((await candidateStore.ListAsync(projectId, 0, 10)).Single().Status == RequirementReviewStatus.Confirmed,
+        "Candidate listing reflects the human review decision");
+
     var updated = await store.FindAsync(
         projectId, requirementId);
 

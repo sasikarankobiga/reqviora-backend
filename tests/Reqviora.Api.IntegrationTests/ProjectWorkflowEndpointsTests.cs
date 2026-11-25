@@ -13,6 +13,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Common.Interfaces;
+using Reqviora.Application.Features.AIOrchestration;
+using Reqviora.Application.Features.RequirementReview;
+using Reqviora.Infrastructure.Services;
 using Reqviora.Application.Features.Projects.DTOs;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
@@ -178,6 +181,43 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             $"/api/projects/{_factory.Project.Id}/input-intelligence/requirements/extract",
             new { languageCode = "en", inputText = "Users need sign in", evidence = Array.Empty<object>(), consentGranted = true });
         Assert.Equal(HttpStatusCode.Forbidden, foreignProject.StatusCode);
+    }
+
+    [Fact]
+    public async Task Extraction_persists_suggested_candidates_and_lists_only_for_project_members()
+    {
+        using var factory = new WorkflowApiFactory(enableAiForTest: true);
+        using var owner = CreateClient(factory.Owner, factory);
+        var path = $"/api/projects/{factory.Project.Id}";
+        var input = new
+        {
+            languageCode = "en", inputText = "Users need sign in", consentGranted = true,
+            evidence = new[] { new { sourceId = "SRC-INPUT", locator = "line 1", pageNumber = (int?)null,
+                startOffset = 0, endOffset = 18, quote = "Users need sign in" } }
+        };
+        using var response = await owner.PostAsJsonAsync(path + "/input-intelligence/requirements/extract", input);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<RequirementExtractionPayload>();
+        var candidate = Assert.Single(payload!.Candidates);
+        Assert.NotEqual("REQ-LOGIN", candidate.Id);
+        using var list = await owner.GetAsync(path + "/requirements/candidates");
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        var entries = await list.Content.ReadFromJsonAsync<ReviewedRequirement[]>();
+        var saved = Assert.Single(entries!);
+        Assert.Equal(candidate.Id, saved.Id);
+        Assert.Equal(RequirementReviewStatus.Suggested, saved.Status);
+        Assert.Equal(1, saved.Revision);
+        Assert.Null(saved.ConfirmedBy);
+        using var outsider = CreateClient(factory.OtherUser, factory);
+        using var denied = await outsider.GetAsync(path + "/requirements/candidates");
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using var invalidPage = await owner.GetAsync(path + "/requirements/candidates?limit=101");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPage.StatusCode);
+        using var second = await owner.PostAsJsonAsync(path + "/input-intelligence/requirements/extract", input);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var secondPayload = await second.Content.ReadFromJsonAsync<RequirementExtractionPayload>();
+        Assert.NotEqual(candidate.Id, Assert.Single(secondPayload!.Candidates).Id);
+        Assert.Equal(2, factory.CandidateStore.Items.Count);
     }
 
     [Fact]
@@ -438,10 +478,11 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
 
     public void Dispose() => _factory.Dispose();
 
-    private HttpClient CreateClient(User user)
+    private HttpClient CreateClient(User user, WorkflowApiFactory? factory = null)
     {
-        var client = _factory.CreateClient();
-        using var scope = _factory.Services.CreateScope();
+        factory ??= _factory;
+        var client = factory.CreateClient();
+        using var scope = factory.Services.CreateScope();
         var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer", tokens.CreateAccessToken(user).Token);
@@ -475,8 +516,12 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         public Project Project { get; }
         public TestFileStorage Storage { get; } = new();
 
-        public WorkflowApiFactory()
+        private readonly bool _enableAiForTest;
+        public TestCandidateStore CandidateStore { get; } = new();
+
+        public WorkflowApiFactory(bool enableAiForTest = false)
         {
+            _enableAiForTest = enableAiForTest;
             Workspace = new Workspace { Name = "Owner workspace", OwnerUserId = Owner.Id };
             Project = new Project
             {
@@ -507,6 +552,14 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                 services.RemoveAll<IFileStorageService>();
                 services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection));
                 services.AddSingleton<IFileStorageService>(Storage);
+                if (_enableAiForTest)
+                {
+                    services.PostConfigure<AiOptions>(options => options.Enabled = true);
+                    services.RemoveAll<IStructuredAiProvider>();
+                    services.AddSingleton<IStructuredAiProvider>(new TestExtractionProvider());
+                    services.RemoveAll<IRequirementCandidateStore>();
+                    services.AddSingleton<IRequirementCandidateStore>(CandidateStore);
+                }
             });
         }
 
@@ -524,6 +577,31 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             PasswordHash = "not-used-in-tests",
             DisplayName = email
         };
+
+        public sealed class TestExtractionProvider : IStructuredAiProvider
+        {
+            public Task<AiProviderResponse> ExecuteAsync(AiProviderRequest request, CancellationToken cancellationToken = default)
+            {
+                Assert.Contains("SRC-INPUT", request.InputText);
+                const string json = """
+                    {"contractVersion":"1.0","candidates":[{"id":"REQ-LOGIN","title":"Login","description":"Users need sign in","languageCode":"en","confidence":0.9,"evidence":[{"sourceId":"SRC-INPUT","locator":"line 1","quote":"Users need sign in"}]}]}
+                    """;
+                return Task.FromResult(new AiProviderResponse(request.RequestId, AiRunStatus.Completed, json, null));
+            }
+        }
+
+        public sealed class TestCandidateStore : IRequirementCandidateStore
+        {
+            public List<(Guid ProjectId, ReviewedRequirement Requirement)> Items { get; } = new();
+            public Task InsertAsync(Guid projectId, IReadOnlyList<ReviewedRequirement> candidates, CancellationToken cancellationToken = default)
+            {
+                Items.AddRange(candidates.Select(item => (projectId, item)));
+                return Task.CompletedTask;
+            }
+            public Task<IReadOnlyList<ReviewedRequirement>> ListAsync(Guid projectId, int offset, int limit, CancellationToken cancellationToken = default) =>
+                Task.FromResult<IReadOnlyList<ReviewedRequirement>>(Items.Where(item => item.ProjectId == projectId)
+                    .Select(item => item.Requirement).OrderBy(item => item.Id).Skip(offset).Take(limit).ToArray());
+        }
 
         public sealed class TestFileStorage : IFileStorageService
         {

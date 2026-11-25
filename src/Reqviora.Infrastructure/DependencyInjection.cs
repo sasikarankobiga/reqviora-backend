@@ -122,6 +122,8 @@ public static class DependencyInjection
             .AddScoped<IRequirementReviewStore>(_ => databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)
                 ? new SqlServerRequirementReviewStore(connectionString)
                 : new PostgresRequirementReviewStore(connectionString))
+            .AddScoped<IRequirementCandidateStore>(_ => new RequirementCandidateStore(connectionString,
+                databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)))
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ProjectDraftService>()
             .AddScoped<ProjectExportService>()

@@ -46,21 +46,16 @@ foreach (var batch in Regex.Split(script, @"^\s*GO\s*$", RegexOptions.Multiline 
 
 try
 {
-    const string seedSql = """
-        INSERT INTO reqviora_review.requirements
-            (project_id, requirement_id, title, description, status, revision, evidence_json)
-        VALUES
-            (@project_id, @requirement_id, @title, @description, 'Suggested', 1, @evidence_json);
-        """;
-    await using (var seed = new SqlCommand(seedSql, connection))
-    {
-        AddIdentity(seed);
-        seed.Parameters.Add("title", SqlDbType.NVarChar, 200).Value = "Login";
-        seed.Parameters.Add("description", SqlDbType.NVarChar, 4000).Value = "User login requirement";
-        seed.Parameters.Add("evidence_json", SqlDbType.NVarChar, -1).Value = JsonSerializer.Serialize(evidence);
-        await seed.ExecuteNonQueryAsync();
-        inserted = true;
-    }
+    var candidateStore = new RequirementCandidateStore(connectionString, sqlServer: true);
+    var candidate = new ReviewedRequirement(requirementId, "Login", "User login requirement",
+        RequirementReviewStatus.Suggested, 1, evidence, null, null);
+    await candidateStore.InsertAsync(projectId, new[] { candidate });
+    inserted = true;
+    var page = await candidateStore.ListAsync(projectId, 0, 10);
+    Check(page.Count == 1 && page[0].Id == requirementId && page[0].Status == RequirementReviewStatus.Suggested,
+        "Candidate insert and list share the review table");
+    Check((await candidateStore.ListAsync(Guid.NewGuid(), 0, 10)).Count == 0, "Candidate listing isolates projects");
+    Check((await candidateStore.ListAsync(projectId, 1, 10)).Count == 0, "Candidate listing honors pagination");
 
     var store = new SqlServerRequirementReviewStore(connectionString);
     var snapshot = await store.FindAsync(projectId, requirementId);
@@ -71,6 +66,9 @@ try
         requirementId, 1, RequirementDecisionKind.Accept, reviewerId, DateTimeOffset.UtcNow);
     var result = RequirementReviewService.Apply(snapshot!.Requirement, decision);
     Check(await store.TryCommitAsync(projectId, 1, result), "Review revision commits");
+
+    Check((await candidateStore.ListAsync(projectId, 0, 10)).Single().Status == RequirementReviewStatus.Confirmed,
+        "Candidate listing reflects the human review decision");
 
     var updated = await store.FindAsync(projectId, requirementId);
     Check(updated is not null && updated.Requirement.Status == RequirementReviewStatus.Confirmed &&
