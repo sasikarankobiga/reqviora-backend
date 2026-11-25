@@ -671,6 +671,8 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             expectedConcurrencyToken = saved.ConcurrencyToken
         });
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
+        var second = await updated.Content.ReadFromJsonAsync<ProjectDraftResponse>();
+        Assert.NotNull(second);
 
         using var stale = await client.PutAsJsonAsync(path, new
         {
@@ -683,6 +685,16 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, history.StatusCode);
         var versions = await history.Content.ReadFromJsonAsync<BlueprintVersionResponse[]>();
         Assert.Equal(2, versions?.Length);
+
+        using var restored = await client.PostAsJsonAsync(
+            $"/api/projects/{_factory.Project.Id}/drafts/versions/1/restore",
+            new { expectedConcurrencyToken = second.ConcurrencyToken });
+        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+        var restoredDraft = await restored.Content.ReadFromJsonAsync<ProjectDraftResponse>();
+        Assert.Equal(3, restoredDraft?.Version);
+        Assert.Equal("First", restoredDraft?.Draft.GetProperty("title").GetString());
+        using var restoredHistory = await client.GetAsync($"/api/projects/{_factory.Project.Id}/drafts/versions");
+        Assert.Equal(3, (await restoredHistory.Content.ReadFromJsonAsync<BlueprintVersionResponse[]>())?.Length);
     }
 
     [Fact]

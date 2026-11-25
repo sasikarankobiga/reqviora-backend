@@ -55,6 +55,39 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
             .OrderByDescending(x => x.Version).Select(x => x.Revision).ToArrayAsync(cancellationToken);
     }
 
+    public async Task<ProjectDraft> RestoreVersionAsync(
+        Guid projectId, Guid actorId, int versionNumber, Guid expectedToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (versionNumber <= 0)
+            throw new ArgumentOutOfRangeException(nameof(versionNumber));
+        await ProjectOwnerAccess.RequireWriteAsync(db, projectId, actorId, cancellationToken);
+        return await WithProjectReviewLockAsync(projectId, async () =>
+        {
+            var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
+            EnsureOpen(draft);
+            if (draft.Version == versionNumber)
+                throw new InvalidOperationException("The requested version is already current.");
+            var historical = await db.DesignDraftVersions.AsNoTracking().SingleOrDefaultAsync(
+                item => item.ProjectDraftId == draft.Id && item.ProjectId == projectId &&
+                    item.Version == versionNumber, cancellationToken)
+                ?? throw new KeyNotFoundException("The requested draft version was not found.");
+            BlueprintDocument? blueprint = null;
+            if (historical.BlueprintJson is not null)
+            {
+                blueprint = JsonSerializer.Deserialize<BlueprintDocument>(historical.BlueprintJson, DraftBlueprint.Json)
+                    ?? throw new InvalidDataException("The historical Blueprint is unavailable.");
+                await RequireConfirmationsAsync(projectId, blueprint, cancellationToken);
+            }
+            draft.DraftJson = historical.DraftJson;
+            draft.Version = checked(draft.Version + 1);
+            RotateToken(draft);
+            AddDraftVersion(draft, blueprint, historical.BlueprintJson);
+            await PersistDraftAsync(cancellationToken);
+            return draft;
+        }, cancellationToken);
+    }
+
     public async Task<ValidationRun> ValidateAsync(
         Guid projectId, Guid actorId, Guid expectedToken, CancellationToken cancellationToken = default)
     {

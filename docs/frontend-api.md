@@ -46,6 +46,7 @@ Create the first draft without a token. Every successful write returns a new `co
 | GET | `/api/projects/{projectId}/drafts/current` | Resume the current draft |
 | PUT | `/api/projects/{projectId}/drafts/current` | Save generic draft JSON |
 | GET | `/api/projects/{projectId}/drafts/versions` | Immutable version history |
+| POST | `/api/projects/{projectId}/drafts/versions/{version}/restore` | Restore a historical snapshot as a new current version |
 | POST | `/api/projects/{projectId}/drafts/start-after-approval` | Start a child draft from the approved revision |
 | GET | `/api/projects/{projectId}/blueprints/current` | Current Blueprint v1 document |
 | PUT | `/api/projects/{projectId}/blueprints/current` | Save draft JSON and a Blueprint v1 document |
