@@ -24,6 +24,7 @@ public sealed class ProductionConfigurationTests
     [InlineData("Storage:AntivirusMaxAttempts", "0")]
     [InlineData("Storage:AntivirusRetryDelayMilliseconds", "5001")]
     [InlineData("Storage:AntivirusTimeoutSeconds", "0")]
+    [InlineData("Storage:Provider", "Unsupported")]
     [InlineData("Cors:AllowedOrigins:0", "http://app.example.test")]
     [InlineData("DataProtection:KeysPath", "relative-keys")]
     [InlineData("DataProtection:CertificatePassword", "")]
@@ -50,6 +51,21 @@ public sealed class ProductionConfigurationTests
     }
 
     [Fact]
+    public void Supabase_storage_requires_https_private_bucket_and_secret_backed_service_key()
+    {
+        var values = Values();
+        values["Storage:Provider"] = "Supabase";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["Storage:SupabaseUrl"] = "https://project.supabase.co";
+        values["Storage:SupabaseBucket"] = "private-documents";
+        values["Storage:SupabaseServiceKey"] = "from-secret-store";
+        values["Storage:SignedUrlSeconds"] = "300";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Fact]
     public void Distributed_gateway_rate_limiting_requires_an_explicit_trusted_proxy()
     {
         var values = Values();
@@ -68,6 +84,7 @@ public sealed class ProductionConfigurationTests
     private static Dictionary<string, string?> Values() => new()
     {
         ["Storage:RequireAntivirus"] = "true",
+        ["Storage:Provider"] = "Local",
         ["Storage:ClamAvHost"] = "clamav.internal",
         ["Storage:ClamAvPort"] = "3310",
         ["Storage:AntivirusMaxAttempts"] = "2",

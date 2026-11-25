@@ -26,6 +26,8 @@ CI runs `.github/scripts/postgres-backup-restore-drill.sh`: it creates a custom-
 
 Mount `Storage__RootPath` on private durable storage. Public web serving must not expose this directory. Production must set `Storage__RequireAntivirus=true` and connect the ClamAV daemon. Uploads are size-limited, receive random storage names, and are scanned before persistence. Approved exports are verified with their manifest and SHA-256 before being recorded and copied into private artifact storage.
 
+For Supabase Storage, set `Storage__Provider=Supabase`, an HTTPS `Storage__SupabaseUrl`, the pre-created private bucket name, and a secret-backed service key. The application never creates or changes buckets. Keep `Storage__SignedUrlSeconds` between 30 and 900 seconds. The service key is backend-only; clients receive only project-authorized, short-lived download URLs.
+
 ## Monitoring and retention
 
 Forward structured application logs and security alerts to the production monitoring platform. Alert on repeated login failures, MFA challenges, 5xx rates, readiness failures, AI-provider errors, SMTP failures, antivirus failures, and backup failures. API audit events default to 2,555 days and login telemetry to at most 365 days; adjust `Security__AuditRetentionDays` to match policy and applicable law.

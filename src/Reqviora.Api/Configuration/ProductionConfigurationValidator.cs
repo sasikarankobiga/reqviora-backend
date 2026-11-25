@@ -18,8 +18,20 @@ public static class ProductionConfigurationValidator
             "Storage:AntivirusRetryDelayMilliseconds must be between 0 and 5000.");
         Require(configuration.GetValue<int>("Storage:AntivirusTimeoutSeconds") is >= 1 and <= 60,
             "Storage:AntivirusTimeoutSeconds must be between 1 and 60.");
-        Require(Path.IsPathRooted(configuration["Storage:RootPath"] ?? string.Empty),
-            "Production requires an absolute private Storage:RootPath.");
+        var storageProvider = configuration["Storage:Provider"] ?? "Local";
+        Require(storageProvider is "Local" or "Supabase", "Storage:Provider must be Local or Supabase.");
+        if (storageProvider == "Local")
+            Require(Path.IsPathRooted(configuration["Storage:RootPath"] ?? string.Empty),
+                "Production requires an absolute private Storage:RootPath.");
+        else
+        {
+            RequireSecureUrl(configuration["Storage:SupabaseUrl"], "Storage:SupabaseUrl");
+            Require(!string.IsNullOrWhiteSpace(configuration["Storage:SupabaseBucket"]) &&
+                    !string.IsNullOrWhiteSpace(configuration["Storage:SupabaseServiceKey"]),
+                "Supabase storage requires a private bucket name and secret-backed service key.");
+            Require(configuration.GetValue<int>("Storage:SignedUrlSeconds") is >= 30 and <= 900,
+                "Storage:SignedUrlSeconds must be between 30 and 900.");
+        }
 
         Require(!string.IsNullOrWhiteSpace(configuration["DataProtection:ApplicationName"]),
             "Production requires DataProtection:ApplicationName.");

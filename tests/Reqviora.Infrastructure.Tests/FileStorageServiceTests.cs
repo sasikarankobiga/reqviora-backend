@@ -84,6 +84,15 @@ public sealed class FileStorageServiceTests : IDisposable
         await Assert.ThrowsAsync<InvalidDataException>(() => service.DeleteAsync("../outside.txt"));
     }
 
+    [Fact]
+    public async Task Local_storage_does_not_issue_public_or_signed_urls()
+    {
+        var service = Service(new StubScanner(FileThreatScanStatus.Clean), requireAntivirus: true);
+        await using var upload = new MemoryStream([1]);
+        var path = await service.SaveAsync(upload, "private.txt");
+        Assert.Null(await service.CreateSignedReadUrlAsync(path, TimeSpan.FromMinutes(5)));
+    }
+
     private FileStorageService Service(IFileThreatScanner scanner, bool requireAntivirus) => new(
         Options.Create(new StorageOptions
         {

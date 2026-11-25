@@ -18,6 +18,7 @@ public sealed class SmtpOptions
 public sealed class StorageOptions
 {
     public const string SectionName = "Storage";
+    public string Provider { get; set; } = "Local";
     public string RootPath { get; set; } = "./private-artifacts";
     public long MaxFileBytes { get; set; } = 25 * 1024 * 1024;
     public int RetentionDays { get; set; } = 365;
@@ -27,6 +28,10 @@ public sealed class StorageOptions
     public int AntivirusMaxAttempts { get; set; } = 2;
     public int AntivirusRetryDelayMilliseconds { get; set; } = 250;
     public int AntivirusTimeoutSeconds { get; set; } = 10;
+    public string SupabaseUrl { get; set; } = "";
+    public string SupabaseBucket { get; set; } = "";
+    public string SupabaseServiceKey { get; set; } = "";
+    public int SignedUrlSeconds { get; set; } = 300;
 }
 
 public sealed class AiOptions

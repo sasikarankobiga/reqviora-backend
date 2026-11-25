@@ -510,6 +510,10 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         Assert.DoesNotContain("storagePath", listedBody, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("completed", listedBody);
         Assert.DoesNotContain("sha256", listedBody, StringComparison.OrdinalIgnoreCase);
+        using var downloaded = await owner.GetAsync(
+            $"/api/projects/{_factory.Project.Id}/documents/{documentId}/download");
+        Assert.Equal(HttpStatusCode.OK, downloaded.StatusCode);
+        Assert.Equal("REQVIORA requirements", await downloaded.Content.ReadAsStringAsync());
 
         using var duplicateForm = DocumentForm("requirements-copy.txt", "text/plain");
         using var duplicate = await owner.PostAsync(
@@ -519,6 +523,9 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         using var outsider = CreateClient(_factory.OtherUser);
         using var forbiddenParse = await outsider.PostAsync($"/api/projects/{_factory.Project.Id}/documents/{documentId}/parse", null);
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenParse.StatusCode);
+        using var forbiddenDownload = await outsider.GetAsync(
+            $"/api/projects/{_factory.Project.Id}/documents/{documentId}/download");
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenDownload.StatusCode);
 
         using var mismatchedForm = DocumentForm("requirements.exe", "text/plain");
         using var mismatched = await owner.PostAsync(
@@ -1186,6 +1193,11 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
                 Deletes++;
                 return Task.CompletedTask;
             }
+
+            public Task<Uri?> CreateSignedReadUrlAsync(
+                string storagePath,
+                TimeSpan lifetime,
+                CancellationToken cancellationToken = default) => Task.FromResult<Uri?>(null);
         }
     }
 }

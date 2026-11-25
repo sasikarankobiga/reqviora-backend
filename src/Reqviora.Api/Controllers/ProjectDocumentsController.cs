@@ -64,6 +64,24 @@ public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorag
         return document is null ? NotFound() : Ok(Metadata(document));
     }
 
+    [HttpGet("{documentId:guid}/download")]
+    public async Task<IActionResult> Download(
+        Guid projectId,
+        Guid documentId,
+        CancellationToken ct)
+    {
+        await ProjectApiAccess.RequireReadAsync(db, projectId, ProjectApiAccess.RequireUserId(User), ct);
+        var document = await db.ProjectDocuments.AsNoTracking().SingleOrDefaultAsync(
+            item => item.ProjectId == projectId && item.Id == documentId, ct);
+        if (document is null) return NotFound();
+        var signed = await storage.CreateSignedReadUrlAsync(
+            document.StoragePath, TimeSpan.FromMinutes(5), ct);
+        if (signed is not null)
+            return Ok(new { url = signed, expiresAt = DateTimeOffset.UtcNow.AddMinutes(5) });
+        var stream = await storage.OpenReadAsync(document.StoragePath, ct);
+        return File(stream, document.MediaType, document.FileName, enableRangeProcessing: true);
+    }
+
     [HttpPost("{documentId:guid}/parse")]
     public async Task<IActionResult> Parse(Guid projectId, Guid documentId,
         [FromServices] IDocumentTextParser parser, CancellationToken ct)

@@ -58,6 +58,16 @@ public sealed class FileStorageService(
         return Task.CompletedTask;
     }
 
+    public Task<Uri?> CreateSignedReadUrlAsync(
+        string storagePath,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = ResolvePrivatePath(storagePath);
+        return Task.FromResult<Uri?>(null);
+    }
+
     private string ResolvePrivatePath(string storagePath)
     {
         var root = Path.GetFullPath(options.Value.RootPath);

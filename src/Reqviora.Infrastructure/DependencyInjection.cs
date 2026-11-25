@@ -195,6 +195,14 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(ai.Endpoint, UriKind.Absolute);
             client.Timeout = TimeSpan.FromSeconds(Math.Clamp(ai.TimeoutSeconds, 10, 600));
         });
+        if (storage.Provider.Equals("Supabase", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddHttpClient<SupabaseFileStorageService>(client =>
+            {
+                client.BaseAddress = new Uri(storage.SupabaseUrl, UriKind.Absolute);
+                client.Timeout = TimeSpan.FromSeconds(120);
+            });
+        }
         services.AddScoped<IAiJobRepository, AiJobRepository>();
         services.AddScoped<IAIJobQueue, PersistentAiJobService>();
         services.AddHostedService<AiJobWorker>();
@@ -219,6 +227,10 @@ public static class DependencyInjection
             .AddScoped<IEmailService, EmailService>()
             .AddScoped<IDocumentTextParser, DocumentTextParser>()
             .AddScoped<IFileThreatScanner, ClamAvFileThreatScanner>()
-            .AddScoped<IFileStorageService, FileStorageService>();
+            .AddScoped<IFileStorageService>(serviceProvider =>
+                storage.Provider.Equals("Supabase", StringComparison.OrdinalIgnoreCase)
+                    ? serviceProvider.GetRequiredService<SupabaseFileStorageService>()
+                    : serviceProvider.GetRequiredService<FileStorageService>())
+            .AddScoped<FileStorageService>();
     }
 }

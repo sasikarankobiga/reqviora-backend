@@ -119,3 +119,6 @@ Swagger is available at `/swagger` in Development. Apply the EF migrations and t
 | GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
 
 Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool.
+## Private document downloads
+
+`GET /api/projects/{projectId}/documents/{documentId}/download` always requires an authenticated project reader. With local storage it streams the file through the backend. With the Supabase private-storage provider it returns `{ "url": "https://...", "expiresAt": "..." }`; the URL is short-lived and must not be persisted or shared. Storage object paths and the backend service key are never returned to Flutter or Admin Web clients.
