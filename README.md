@@ -153,8 +153,12 @@ The review endpoint uses the existing `ConnectionStrings:ReqvioraDatabase`.
 In development, apply the EF migrations above and the matching review schema:
 `database/reqviora_review/001_create_review_store.sql` for PostgreSQL or
 `database/reqviora_review/001_create_review_store.sqlserver.sql` for SQL Server.
-The PostgreSQL script expects the `anon` and `authenticated` roles provided by
-Supabase. For standalone PostgreSQL, create those roles as `NOLOGIN` roles first.
+Then apply `database/reqviora_review/002_create_clarifications.sql` (PostgreSQL)
+or `database/reqviora_review/002_create_clarifications.sqlserver.sql` (SQL Server).
+The PostgreSQL scripts handle absent `anon` and `authenticated` roles.
+Use the private backend database connection; do not expose `reqviora_review`
+through the Supabase Data API. See [database deployment checks](docs/database/core-workflow-deployment.md).
+`/health/ready` also probes the review tables and expected columns without writing data.
 
 ## Kobiga backend assignment
 

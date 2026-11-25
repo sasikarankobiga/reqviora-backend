@@ -17,6 +17,13 @@ if (string.IsNullOrWhiteSpace(connectionString))
     return 2;
 }
 
+// These smoke tests execute DDL and write fixture data. Never target a shared database.
+if (new NpgsqlConnectionStringBuilder(connectionString).Host is not ("127.0.0.1" or "localhost"))
+{
+    Console.Error.WriteLine("Review smoke tests require a local disposable database server.");
+    return 2;
+}
+
 var projectId = Guid.NewGuid();
 var requirementId =
     "REQ-SMOKE-" +

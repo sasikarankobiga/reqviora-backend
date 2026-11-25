@@ -48,7 +48,9 @@ public static class DependencyInjection
         var healthChecks = services.AddHealthChecks()
             .AddDbContextCheck<ReqvioraDbContext>(
                 name: databaseProvider,
-                tags: ["ready"]);
+                tags: ["ready"])
+            .AddCheck<ReviewSchemaHealthCheck>("review-schema", tags: ["ready"],
+                timeout: TimeSpan.FromSeconds(15));
 
         var smtp = configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>() ?? new SmtpOptions();
         if (!string.IsNullOrWhiteSpace(smtp.Host))
