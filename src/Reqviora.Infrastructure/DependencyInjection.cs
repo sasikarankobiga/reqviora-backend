@@ -22,6 +22,7 @@ using Reqviora.Application.Features.PlatformSettings;
 using Reqviora.Application.Features.Incidents;
 using Reqviora.Application.Features.AdminProfile;
 using Reqviora.Application.Features.Sharing;
+using Reqviora.Application.Features.AdminHealth;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -264,6 +265,7 @@ public static class DependencyInjection
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ProjectDraftService>()
             .AddScoped<IValidationHealth, ValidationHealth>()
+            .AddScoped<IAdminSystemHealth, AdminSystemHealth>()
             .AddScoped<IPlatformSettings, PlatformSettingsService>()
             .AddScoped<IIncidentManagement, IncidentManagementService>()
             .AddScoped<IAdminProfileService, AdminProfileService>()
