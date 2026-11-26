@@ -122,6 +122,28 @@ Review decisions are `accept`, `edit`, `reject`, or `defer` and require `expecte
 
 An approval requires a passing validation run for the exact current draft version. When a `guidedBuilder` is present, all eight steps and their cross-step coverage must also pass before approval. Export generator 1.1 packages 24 manifest-tracked artifacts plus `manifest.json`, including the SRS, requirement traceability matrix, developer handoff, typed design documentation, `universal-blueprint.json`, `asset-manifest.json`, and immutable `project.json`. Export reads verify every file digest, the manifest, and the archive SHA-256 before returning content.
 
+## Billing and PayHere checkout
+
+Billing is disabled by default. The client must never send or calculate the payable amount. Checkout returns a provider-hosted PayHere form action and fields already signed by the backend. A browser return or cancel redirect is informational only; poll the project billing status until the backend has processed a verified PayHere notification.
+
+| Method | Route | Authorization | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/billing/pricing?projectId={projectId}` | Project reader when a project is supplied | Current server-side USD price and gateway availability |
+| POST | `/api/projects/{projectId}/billing/checkout` | Project owner | Create a pending order and provider-hosted checkout fields |
+| GET | `/api/projects/{projectId}/billing/status` | Project reader | Latest payment and entitlement state |
+| GET | `/api/projects/{projectId}/billing/history?page=1&pageSize=50` | Project reader | Paginated order history |
+| GET | `/api/billing/payments/{paymentId}` | Related project reader or administrator | One payment without cardholder data |
+| POST | `/api/billing/payhere/notify` | Anonymous provider callback; signed form data required | Idempotently verify and apply a PayHere event |
+| GET | `/api/admin/billing/payments` | Administrator | Filtered, paginated payment monitoring |
+| GET | `/api/admin/billing/payments/{paymentId}` | Administrator | Payment detail |
+| GET | `/api/admin/billing/summary` | Administrator | Persisted lifecycle counts and successful USD total |
+| PUT | `/api/admin/billing/projects/{projectId}/pricing` | Administrator | Replace the active project USD price using `{ "amountMinor": 12500 }` |
+| POST | `/api/admin/billing/payments/{paymentId}/refund` | Administrator | Request a provider refund using `{ "reason": "..." }` |
+
+Checkout contact fields are `firstName`, `lastName`, `email`, `phone`, `address`, `city`, and `country`. The response contains `paymentId`, `orderId`, `actionUrl`, `fields`, and `expiresAt`; submit `fields` directly to `actionUrl`. Status values are `Pending`, `Processing`, `Succeeded`, `Failed`, `Cancelled`, `Refunded`, or `Disputed`. Entitlement is granted only after a signed success notification and is revoked on a verified chargeback or completed refund. The API never receives or stores card numbers or CVV values.
+
+The frontend develop branch inspected on 26 November 2026 does not yet call these billing routes. It also still calls legacy `/api/projects/{projectId}/workflow-intelligence/*` paths. Current backend workflow routes are the Requirements, Clarifications, Blueprints, Drafts, Guided Builder, and Approval routes documented above; frontend migration or a separately approved compatibility adapter is required before browser E2E can pass.
+
 ## Configuration
 
 - `ConnectionStrings__ReqvioraDatabase`
