@@ -16,6 +16,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectPaymentOrder> ProjectPaymentOrders => Set<ProjectPaymentOrder>();
+    public DbSet<PaymentRefundRequest> PaymentRefundRequests => Set<PaymentRefundRequest>();
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
     public DbSet<ProjectDocumentSegment> ProjectDocumentSegments => Set<ProjectDocumentSegment>();
     public DbSet<Requirement> Requirements => Set<Requirement>();

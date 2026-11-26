@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -107,6 +107,59 @@ public sealed class AdminBillingController(
             paymentId, cancellationToken);
 
         return row is null ? NotFound() : Ok(row);
+    }
+
+    public sealed record RefundListRequest(
+        [Required, RegularExpression("^[0-9]{6}$")] string Code,
+        [Range(1, 1000000)] int Page = 1,
+        [Range(1, 100)] int PageSize = 20);
+
+    public sealed record RefundReviewRequest(
+        [Required, RegularExpression("^[0-9]{6}$")] string Code,
+        [Required, RegularExpression("^(reviewed|rejected)$")]
+        string Decision);
+
+    [HttpPost("refunds")]
+    public async Task<IActionResult> Refunds(
+        RefundListRequest request,
+        [FromServices] IPaymentRefundService refunds,
+        CancellationToken ct)
+    {
+        var denied = await VerifyAccessAsync(request.Code, ct);
+        if (denied is not null) return denied;
+
+        return Ok(await refunds.ListAdminAsync(
+            request.Page, request.PageSize, ct));
+    }
+
+    [HttpPost("refunds/{paymentId:guid}/review")]
+    public async Task<IActionResult> ReviewRefund(
+        Guid paymentId,
+        RefundReviewRequest request,
+        [FromServices] IPaymentRefundService refunds,
+        CancellationToken ct)
+    {
+        var denied = await VerifyAccessAsync(request.Code, ct);
+        if (denied is not null) return denied;
+
+        var subject = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+
+        if (!Guid.TryParse(subject, out var actorId))
+            return Unauthorized();
+
+        var result = await refunds.ReviewAsync(
+            paymentId, actorId, request.Decision, ct);
+
+        return result.Code switch
+        {
+            "review_completed" => Ok(result.Item),
+            "not_found" => NotFound(),
+            "already_reviewed" => Conflict(result),
+            "not_eligible" => Conflict(result),
+            "retry_required" => StatusCode(503),
+            _ => BadRequest()
+        };
     }
 
     private async Task<IActionResult?> VerifyAccessAsync(

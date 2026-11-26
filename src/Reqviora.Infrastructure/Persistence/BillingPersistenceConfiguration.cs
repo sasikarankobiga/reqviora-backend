@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Reqviora.Domain.Entities;
 
 namespace Reqviora.Infrastructure.Persistence;
@@ -9,6 +9,38 @@ internal static class BillingPersistenceConfiguration
         ModelBuilder model,
         bool sqlServer)
     {
+        var refund = model.Entity<PaymentRefundRequest>();
+
+        var refundStatus = sqlServer ? "[Status]" : "\"Status\"";
+        var refundReason = sqlServer ? "[Reason]" : "\"Reason\"";
+
+        refund.ToTable("PaymentRefundRequests", table =>
+        {
+            table.HasCheckConstraint("CK_RefundRequests_Status",
+                $"{refundStatus} IN ('requested','reviewed','rejected')");
+            table.HasCheckConstraint("CK_RefundRequests_Reason",
+                $"{refundReason} IN ('duplicate_payment','service_issue','other')");
+        });
+
+        refund.HasKey(x => x.PaymentId);
+        refund.Property(x => x.PaymentId).ValueGeneratedNever();
+        refund.Property(x => x.Status).HasMaxLength(20).IsRequired();
+        refund.Property(x => x.Reason).HasMaxLength(30).IsRequired();
+        refund.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+        refund.HasIndex(x => x.Status);
+
+        refund.HasOne<ProjectPaymentOrder>().WithOne()
+            .HasForeignKey<PaymentRefundRequest>(x => x.PaymentId)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        refund.HasOne<User>().WithMany()
+            .HasForeignKey(x => x.RequestedBy)
+            .OnDelete(DeleteBehavior.NoAction);
+
+        refund.HasOne<User>().WithMany()
+            .HasForeignKey(x => x.ReviewedBy)
+            .OnDelete(DeleteBehavior.NoAction);
+
         var order = model.Entity<ProjectPaymentOrder>();
 
         var amountColumn =
