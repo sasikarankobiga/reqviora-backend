@@ -28,9 +28,9 @@ fi
 echo "PostgreSQL server: ${server_version}"
 
 source_fixture="$(${postgres_tools[psql]} --tuples-only --no-align \
-  --command="SELECT to_regclass('reqviora_review.requirements') IS NOT NULL;")"
+  --command="SELECT to_regclass('reqviora_review.requirements') IS NOT NULL AND to_regclass('reqviora_review.events') IS NOT NULL AND to_regclass('reqviora_review.clarifications') IS NOT NULL;")"
 if [[ "${source_fixture}" != "t" ]]; then
-  echo "Expected reqviora_review.requirements CI fixture table is missing." >&2
+  echo "Expected review schema CI fixture tables are missing." >&2
   exit 1
 fi
 source_tables="$(${postgres_tools[psql]} --tuples-only --no-align \
@@ -58,7 +58,7 @@ sha256sum --check "${dump_file}.sha256"
 restored_tables="$(${postgres_tools[psql]} --dbname="${restore_database}" --tuples-only --no-align \
   --command="SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema');")"
 restored_fixture="$(${postgres_tools[psql]} --dbname="${restore_database}" --tuples-only --no-align \
-  --command="SELECT to_regclass('reqviora_review.requirements') IS NOT NULL;")"
+  --command="SELECT to_regclass('reqviora_review.requirements') IS NOT NULL AND to_regclass('reqviora_review.events') IS NOT NULL AND to_regclass('reqviora_review.clarifications') IS NOT NULL;")"
 if [[ "${restored_tables}" != "${source_tables}" || "${restored_fixture}" != "t" ]]; then
   echo "Restore drill schema verification failed (source=${source_tables}, restored=${restored_tables})." >&2
   exit 1

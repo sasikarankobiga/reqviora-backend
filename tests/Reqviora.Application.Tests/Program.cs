@@ -351,3 +351,4 @@ sealed class FakeAiProvider : IStructuredAiProvider
         );
     }
 }
+

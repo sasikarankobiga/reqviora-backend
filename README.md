@@ -71,6 +71,7 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `AI:*` | After provider approval | OpenAI-compatible endpoint, model, and secret-backed API key |
 | `Storage:*` | Documents/exports | Private root, limits, retention, and ClamAV connection |
 | `Security:AdminEmails` | Admin MFA | Accounts blocked from password login until MFA is enrolled, then always challenged |
+| `Invitations:ExpirationHours` | No | Project invitation lifetime; defaults to 72 hours (1–720) |
 
 No passwords, connection credentials, or JWT signing keys should be committed.
 
@@ -128,10 +129,17 @@ Email verification, password reset, and email-change tokens are random, stored o
 - `GET /api/projects/{id}` - read an owned or shared project
 - `PUT /api/projects/{id}` - update all nine project fields (owner only)
 - `GET /api/projects/{id}/members` - list the owner and project members
-- `PUT /api/projects/{id}/members/{userId}` - add/update a `Viewer` or `Editor` (owner only)
+- `PUT /api/projects/{id}/members/{userId}` - update an accepted `Viewer` or `Editor` (owner only)
 - `DELETE /api/projects/{id}/members/{userId}` - remove a member (owner only)
+- `POST/GET /api/projects/{id}/invitations` - create/list secure invitations (owner only)
+- `POST /api/projects/{id}/invitations/{invitationId}/revoke` - revoke a pending invitation
+- `POST /api/projects/{id}/invitations/{invitationId}/resend` - invalidate and replace its token
+- `POST /api/project-invitations/accept` - accept as the verified recipient
+- `POST /api/project-invitations/reject` - reject as the verified recipient
 
 All project endpoints require `Authorization: Bearer <access-token>`. Viewers can read shared project content; Editors can also save drafts, validate, review requirements, upload documents, and invoke input intelligence. Approval, export creation, project metadata updates, and member administration remain owner-only. A ready-to-run request collection is available at `docs/api/projects.http`.
+
+First-time membership requires accepted email-bound invitations. Raw tokens are emailed and are never returned by list APIs or stored in plaintext. See [secure project invitations](docs/project-invitations.md).
 
 ### Requirement review
 
@@ -153,8 +161,12 @@ The review endpoint uses the existing `ConnectionStrings:ReqvioraDatabase`.
 In development, apply the EF migrations above and the matching review schema:
 `database/reqviora_review/001_create_review_store.sql` for PostgreSQL or
 `database/reqviora_review/001_create_review_store.sqlserver.sql` for SQL Server.
-The PostgreSQL script expects the `anon` and `authenticated` roles provided by
-Supabase. For standalone PostgreSQL, create those roles as `NOLOGIN` roles first.
+Then apply `database/reqviora_review/002_create_clarifications.sql` (PostgreSQL)
+or `database/reqviora_review/002_create_clarifications.sqlserver.sql` (SQL Server).
+The PostgreSQL scripts handle absent `anon` and `authenticated` roles.
+Use the private backend database connection; do not expose `reqviora_review`
+through the Supabase Data API. See [database deployment checks](docs/database/core-workflow-deployment.md).
+`/health/ready` also probes the review tables and expected columns without writing data.
 
 ## Kobiga backend assignment
 

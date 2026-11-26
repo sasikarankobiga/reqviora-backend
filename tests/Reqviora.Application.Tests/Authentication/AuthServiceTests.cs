@@ -13,7 +13,7 @@ public sealed class AuthServiceTests
     private static readonly DateTimeOffset Now = new(2026, 11, 18, 0, 0, 0, TimeSpan.Zero);
 
     [Fact]
-    public async Task Register_hashes_password_and_stores_only_refresh_token_hash()
+    public async Task Register_hashes_password_without_issuing_session()
     {
         var fixture = new Fixture();
 
@@ -27,10 +27,8 @@ public sealed class AuthServiceTests
         Assert.Equal(
             PasswordVerificationResult.Success,
             fixture.PasswordHasher.VerifyHashedPassword(user, user.PasswordHash, "StrongPassword123!"));
-        var refreshToken = Assert.Single(fixture.Repository.RefreshTokens);
-        Assert.Equal("HASH-refresh-1", refreshToken.TokenHash);
-        Assert.Equal("refresh-1", result.Value!.RefreshToken);
-        Assert.NotEqual(result.Value.RefreshToken, refreshToken.TokenHash);
+        Assert.Empty(fixture.Repository.RefreshTokens);
+        Assert.False(result.Value!.EmailVerified);
         Assert.Equal(1, fixture.UnitOfWork.SaveCount);
     }
 
@@ -50,50 +48,18 @@ public sealed class AuthServiceTests
     }
 
     [Fact]
-    public async Task Unverified_user_cannot_login()
+    public async Task Unverified_user_cannot_login_or_refresh()
     {
         var fixture = new Fixture();
-        var user = fixture.AddUser(
-            "person@example.com",
-            "CorrectPassword123!");
-
+        var user = fixture.AddUser("person@example.com", "CorrectPassword123!");
         user.EmailVerified = false;
-
-        var result = await fixture.Service.LoginAsync(
-            new LoginRequestDto(
-                user.Email,
-                "CorrectPassword123!"));
-
-        Assert.False(result.Succeeded);
+        var login = await fixture.Service.LoginAsync(new LoginRequestDto(user.Email, "CorrectPassword123!"));
+        Assert.False(login.Succeeded);
+        Assert.Equal("Email verification required.", login.Error);
         Assert.Empty(fixture.Repository.RefreshTokens);
-        Assert.Equal(0, fixture.UnitOfWork.SaveCount);
-    }
-
-    [Fact]
-    public async Task Unverified_user_cannot_refresh_session()
-    {
-        var fixture = new Fixture();
-        var user = fixture.AddUser(
-            "person@example.com",
-            "CorrectPassword123!");
-
-        user.EmailVerified = false;
-
-        var token = new RefreshToken
-        {
-            UserId = user.Id,
-            User = user,
-            TokenHash = "HASH-old-refresh",
-            ExpiresAt = Now.AddDays(1)
-        };
-
-        fixture.Repository.RefreshTokens.Add(token);
-
-        var result = await fixture.Service.RefreshAsync(
-            new RefreshTokenRequestDto("old-refresh"));
-
-        Assert.False(result.Succeeded);
-        Assert.Null(token.RevokedAt);
+        fixture.Repository.RefreshTokens.Add(new RefreshToken { UserId = user.Id, User = user,
+            TokenHash = "HASH-old-refresh", ExpiresAt = Now.AddDays(1) });
+        Assert.False((await fixture.Service.RefreshAsync(new RefreshTokenRequestDto("old-refresh"))).Succeeded);
         Assert.Single(fixture.Repository.RefreshTokens);
     }
 

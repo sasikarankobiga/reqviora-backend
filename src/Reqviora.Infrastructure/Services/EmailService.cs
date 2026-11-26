@@ -1,34 +1,52 @@
-using Reqviora.Application.Common.Interfaces;
-
-using System.Net;
-using System.Net.Mail;
 using Microsoft.Extensions.Options;
+using Reqviora.Application.Common.Interfaces;
 
 namespace Reqviora.Infrastructure.Services;
 
-public sealed class EmailService(IOptions<SmtpOptions> options) : IEmailService
+public sealed class EmailService(
+    IEmailTransport transport,
+    IOptions<SmtpOptions> options) : IEmailService
 {
-    public async Task SendAsync(string to, string subject, string body, CancellationToken cancellationToken = default)
+    public async Task SendAsync(
+        string to,
+        string subject,
+        string body,
+        CancellationToken cancellationToken = default)
     {
-        var value = options.Value;
-        if (string.IsNullOrWhiteSpace(value.Host) || string.IsNullOrWhiteSpace(value.FromAddress))
-            throw new InvalidOperationException("SMTP host and sender must be configured through secrets or environment variables.");
+        if (string.IsNullOrWhiteSpace(to) || to.Length > 320 ||
+            string.IsNullOrWhiteSpace(subject) || subject.Length > 300 ||
+            string.IsNullOrWhiteSpace(body) || body.Length > 100_000)
+            throw new ArgumentException("Invalid email envelope.");
 
-        using var message = new MailMessage
+        var value = options.Value;
+        var attempts = Math.Clamp(value.MaxAttempts, 1, 5);
+        EmailDeliveryException? lastFailure = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
-            From = new MailAddress(value.FromAddress, value.FromName),
-            Subject = subject,
-            Body = body,
-            IsBodyHtml = false
-        };
-        message.To.Add(new MailAddress(to));
-        using var client = new SmtpClient(value.Host, value.Port)
-        {
-            EnableSsl = value.UseSsl,
-            Credentials = string.IsNullOrWhiteSpace(value.UserName)
-                ? CredentialCache.DefaultNetworkCredentials
-                : new NetworkCredential(value.UserName, value.Password)
-        };
-        await client.SendMailAsync(message, cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(value.TimeoutSeconds, 1, 120)));
+            try
+            {
+                await transport.SendAsync(new(to, subject, body), timeout.Token);
+                return;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                lastFailure = new("SMTP_TIMEOUT", isTransient: true);
+            }
+            catch (EmailDeliveryException exception) when (exception.IsTransient)
+            {
+                lastFailure = exception;
+            }
+
+            if (attempt < attempts)
+            {
+                var delay = Math.Min(5000,
+                    Math.Max(0, value.BaseRetryMilliseconds) * (1 << (attempt - 1)));
+                await Task.Delay(delay, cancellationToken);
+            }
+        }
+
+        throw lastFailure ?? new EmailDeliveryException("SMTP_DELIVERY_FAILED", isTransient: false);
     }
 }

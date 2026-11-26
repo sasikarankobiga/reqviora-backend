@@ -30,6 +30,12 @@ public sealed class AuthService(
             return Result<AuthResponseDto>.Failure("Invalid email or password.");
         }
 
+        if (user.IsDisabled)
+        {
+            await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, false, false, cancellationToken);
+            return Result<AuthResponseDto>.Failure("Invalid email or password.");
+        }
+
         var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
         if (verification == PasswordVerificationResult.Failed)
         {
@@ -38,26 +44,17 @@ public sealed class AuthService(
         }
 
         if (!user.EmailVerified)
-        {
-            await loginSecurity.RecordAsync(
-                user,
-                user.NormalizedEmail,
-                ipAddress,
-                deviceId,
-                false,
-                false,
-                cancellationToken);
-
-            return Result<AuthResponseDto>.Failure(
-                "Email verification is required.");
-        }
+            return Result<AuthResponseDto>.Failure("Email verification required.");
 
         var otpRequired = await loginSecurity.RequiresOtpAsync(user, ipAddress, deviceId, cancellationToken);
-        if (otpRequired && (string.IsNullOrWhiteSpace(request.OtpCode) || !loginSecurity.ValidateOtp(user, request.OtpCode)))
+        if (otpRequired && !await loginSecurity.VerifyLoginOtpAsync(user, ipAddress, deviceId, request.OtpCode, cancellationToken))
         {
             await loginSecurity.RecordAsync(user, user.NormalizedEmail, ipAddress, deviceId, false, true, cancellationToken);
             return Result<AuthResponseDto>.Failure("One-time password required.");
         }
+
+        if (!otpRequired && !string.IsNullOrWhiteSpace(request.OtpCode))
+            return Result<AuthResponseDto>.Failure("No active login challenge. Sign in again without a code.");
 
         if (verification == PasswordVerificationResult.SuccessRehashNeeded)
             user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
@@ -68,11 +65,11 @@ public sealed class AuthService(
         return Result<AuthResponseDto>.Success(response);
     }
 
-    public async Task<Result<AuthResponseDto>> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
+    public async Task<Result<UserProfileDto>> RegisterAsync(RegisterRequestDto request, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = NormalizeEmail(request.Email);
         if (await users.GetByEmailAsync(normalizedEmail, cancellationToken) is not null)
-            return Result<AuthResponseDto>.Failure("Email is already registered.");
+            return Result<UserProfileDto>.Failure("Email is already registered.");
 
         var user = new User
         {
@@ -84,9 +81,8 @@ public sealed class AuthService(
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
         await users.AddAsync(user, cancellationToken);
-        var response = await CreateSessionAsync(user, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
-        return Result<AuthResponseDto>.Success(response);
+        return Result<UserProfileDto>.Success(new UserProfileDto(user.Id, user.Email, user.DisplayName, user.EmailVerified));
     }
 
     public async Task<Result<AuthResponseDto>> RefreshAsync(
@@ -96,21 +92,21 @@ public sealed class AuthService(
         var tokenHash = tokens.HashRefreshToken(request.RefreshToken);
         var existingToken = await users.GetRefreshTokenByHashAsync(tokenHash, cancellationToken);
         var now = timeProvider.GetUtcNow();
-        if (existingToken is null || !existingToken.IsActive(now))
+        if (existingToken is null || !existingToken.IsActive(now) || !existingToken.User.EmailVerified ||
+            existingToken.User.IsDisabled)
             return Result<AuthResponseDto>.Failure("Invalid or expired refresh token.");
 
-        if (!existingToken.User.EmailVerified)
-        {
-            return Result<AuthResponseDto>.Failure(
-                "Email verification is required.");
-        }
+        // Existing refresh tokens do not record MFA provenance. Require a new MFA login for administrators.
+        if (await loginSecurity.IsAdminAsync(existingToken.User, cancellationToken))
+            return Result<AuthResponseDto>.Failure("Administrator sign-in with MFA required.");
 
         var newRefreshToken = tokens.CreateRefreshToken();
+        var newRefreshEntity = ToEntity(existingToken.UserId, newRefreshToken);
         existingToken.RevokedAt = now;
         existingToken.ReplacedByTokenHash = newRefreshToken.TokenHash;
-        await users.AddRefreshTokenAsync(ToEntity(existingToken.UserId, newRefreshToken), cancellationToken);
+        await users.AddRefreshTokenAsync(newRefreshEntity, cancellationToken);
 
-        var accessToken = tokens.CreateAccessToken(existingToken.User);
+        var accessToken = tokens.CreateAccessToken(existingToken.User, newRefreshEntity.Id);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<AuthResponseDto>.Success(ToResponse(existingToken.User, accessToken, newRefreshToken));
     }
@@ -143,9 +139,10 @@ public sealed class AuthService(
 
     private async Task<AuthResponseDto> CreateSessionAsync(User user, CancellationToken cancellationToken)
     {
-        var accessToken = tokens.CreateAccessToken(user);
         var refreshToken = tokens.CreateRefreshToken();
-        await users.AddRefreshTokenAsync(ToEntity(user.Id, refreshToken), cancellationToken);
+        var refreshEntity = ToEntity(user.Id, refreshToken);
+        await users.AddRefreshTokenAsync(refreshEntity, cancellationToken);
+        var accessToken = tokens.CreateAccessToken(user, refreshEntity.Id);
         return ToResponse(user, accessToken, refreshToken);
     }
 
@@ -175,6 +172,8 @@ public sealed class AuthService(
         public static readonly NoLoginSecurity Instance = new();
         public Task<bool> RequiresOtpAsync(User user, string ipAddress, string deviceId, CancellationToken cancellationToken) => Task.FromResult(false);
         public bool ValidateOtp(User user, string code) => true;
+        public Task<bool> VerifyLoginOtpAsync(User user, string ipAddress, string deviceId, string? code, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task<bool> IsAdminAsync(User user, CancellationToken cancellationToken) => Task.FromResult(false);
         public Task RecordAsync(User? user, string normalizedEmail, string ipAddress, string deviceId, bool succeeded,
             bool otpRequired, CancellationToken cancellationToken) => Task.CompletedTask;
     }

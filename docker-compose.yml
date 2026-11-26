@@ -10,22 +10,43 @@ services:
       Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env}
       AccountLinks__BaseUrl: ${ACCOUNTLINKS__BASEURL:?Set ACCOUNTLINKS__BASEURL in .env}
       Cors__AllowedOrigins__0: ${CORS__ALLOWEDORIGINS__0:?Set CORS__ALLOWEDORIGINS__0 in .env}
-      Smtp__Host: ${SMTP__HOST:-}
+      Smtp__Host: ${SMTP__HOST:?Set SMTP__HOST in .env}
       Smtp__Port: ${SMTP__PORT:-587}
-      Smtp__UserName: ${SMTP__USERNAME:-}
-      Smtp__Password: ${SMTP__PASSWORD:-}
-      Smtp__FromAddress: ${SMTP__FROMADDRESS:-}
+      Smtp__UserName: ${SMTP__USERNAME:?Set SMTP__USERNAME in .env}
+      Smtp__Password: ${SMTP__PASSWORD:?Set SMTP__PASSWORD in .env}
+      Smtp__FromAddress: ${SMTP__FROMADDRESS:?Set SMTP__FROMADDRESS in .env}
       Smtp__UseSsl: ${SMTP__USESSL:-true}
+      DataProtection__ApplicationName: REQVIORA
+      DataProtection__KeysPath: /var/lib/reqviora/data-protection-keys
+      DataProtection__KeyEncryptionMode: Certificate
+      DataProtection__CertificatePath: /run/secrets/data_protection_certificate
+      DataProtection__CertificatePassword: ${DATA_PROTECTION_CERTIFICATE_PASSWORD:?Set DATA_PROTECTION_CERTIFICATE_PASSWORD in .env}
       AI__ApiKey: ${AI__APIKEY:-}
       AI__Enabled: ${AI__ENABLED:-false}
+      AI__Endpoint: ${AI__ENDPOINT:-https://api.openai.com/v1/}
       AI__Model: ${AI__MODEL:-gpt-5-mini}
       AI__TranscriptionModel: ${AI__TRANSCRIPTIONMODEL:-gpt-4o-mini-transcribe}
+      AI__MaxAttempts: ${AI__MAXATTEMPTS:-3}
+      AI__BaseRetryMilliseconds: ${AI__BASERETRYMILLISECONDS:-250}
+      AI__MaxResponseCharacters: ${AI__MAXRESPONSECHARACTERS:-2000000}
       Mcp__Enabled: ${MCP__ENABLED:-false}
       Storage__RootPath: /var/lib/reqviora/private-artifacts
       Storage__RequireAntivirus: ${STORAGE__REQUIREANTIVIRUS:-true}
       Storage__ClamAvHost: clamav
     volumes:
       - private_artifacts:/var/lib/reqviora/private-artifacts
+      - data_protection_keys:/var/lib/reqviora/data-protection-keys
+    secrets:
+      - data_protection_certificate
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/health/ready"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,6 +59,7 @@ services:
       interval: 15s
       timeout: 10s
       retries: 20
+    restart: unless-stopped
   postgres:
     image: postgres:16-alpine
     environment:
@@ -53,7 +75,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   private_artifacts:
+  data_protection_keys:
+
+secrets:
+  data_protection_certificate:
+    file: ${DATA_PROTECTION_CERTIFICATE_PATH:?Set DATA_PROTECTION_CERTIFICATE_PATH in .env}

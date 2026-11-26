@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Reqviora.Application.Features.GuidedBuilder;
 
 namespace Reqviora.Application.Features.SecondBrain;
 
@@ -16,7 +17,7 @@ public sealed record SecondBrainManifest(
 
 public static class SecondBrainPackageBuilder
 {
-    public const string GeneratorVersion = "1.0.0";
+    public const string GeneratorVersion = "1.1.0";
     private const string ManifestFormat = "reqviora.second-brain-manifest";
     private const string ManifestPath = "manifest.json";
 
@@ -26,7 +27,9 @@ public static class SecondBrainPackageBuilder
         "scope-and-constraints.md", "feature-catalog.md", "business-rules-and-acceptance.md", "screen-specifications.md",
         "feature-screen-mapping.md", "navigation-and-journeys.md", "design-tokens.md", "components-and-layout.md",
         "interactions-and-states.md", "accessibility-requirements.md", "decision-register.md", "open-questions.md",
-        "validation-report.md", "implementation-checklist.md", "project.json"
+        "validation-report.md", "implementation-checklist.md", "software-requirements-specification.md",
+        "requirement-traceability-matrix.md", "developer-handoff.md", "universal-blueprint.json",
+        "asset-manifest.json", "project.json"
     ];
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -116,6 +119,9 @@ public static class SecondBrainPackageBuilder
         using var draft = JsonDocument.Parse(snapshot.DraftJson);
         var notes = draft.RootElement.TryGetProperty("secondBrain", out var secondBrain) &&
             secondBrain.ValueKind == JsonValueKind.Object ? secondBrain : default;
+        var builder = draft.RootElement.TryGetProperty("guidedBuilder", out var builderElement)
+            ? builderElement.Deserialize<GuidedBuilderDocument>(Json)
+            : null;
         var blueprint = snapshot.Blueprint;
         var features = blueprint.Features.ToDictionary(feature => feature.Id, StringComparer.Ordinal);
 
@@ -136,12 +142,21 @@ public static class SecondBrainPackageBuilder
                 $"Approved revision {snapshot.RevisionId}", Bullets(ReferenceNames.Skip(1).Select(name => $"[{name}]({name})"))),
             ["project-overview.md"] = Markdown("Project overview", snapshot.ProjectName, snapshot.ProjectDescription,
                 $"Project ID {snapshot.ProjectId}", $"Draft version {snapshot.DraftVersion}"),
-            ["goals-and-success-criteria.md"] = Markdown("Goals and success criteria", Notes("goalsAndSuccessCriteria"),
+            ["goals-and-success-criteria.md"] = Markdown("Goals and success criteria",
+                builder?.IdentityAudience is { } identity
+                    ? MarkdownSections("Goals", identity.Goals, "Success criteria", identity.SuccessCriteria)
+                    : Notes("goalsAndSuccessCriteria"),
                 Bullets(blueprint.Requirements.Where(r => r.Status == "confirmed").Select(r => $"{r.Id} {r.Text}"))),
             ["audience-and-roles.md"] = Markdown("Audience and roles", $"Project owner {snapshot.ProjectOwnerId}",
-                Notes("audienceAndRoles")),
+                builder?.IdentityAudience is { } audience
+                    ? MarkdownSections("Audience", audience.TargetAudience,
+                        "Roles", audience.Roles.Select(role => $"{role.Id} {role.Name}: {role.Description}"))
+                    : Notes("audienceAndRoles")),
             ["scope-and-constraints.md"] = Markdown("Scope and constraints",
-                $"Target platforms {string.Join(", ", blueprint.TargetPlatforms)}", Notes("scopeAndConstraints")),
+                $"Target platforms {string.Join(", ", blueprint.TargetPlatforms)}",
+                builder?.IdentityAudience is { } scope
+                    ? MarkdownSections("Scope", [scope.Scope], "Constraints", scope.Constraints, "Assumptions", scope.Assumptions)
+                    : Notes("scopeAndConstraints")),
             ["feature-catalog.md"] = Markdown("Feature catalog", Bullets(blueprint.Features.Select(
                 feature => $"{feature.Id} {feature.Name} | Requirements {string.Join(", ", feature.RequirementIds)}"))),
             ["business-rules-and-acceptance.md"] = Markdown("Business rules and acceptance", Notes("businessRulesAndAcceptance"),
@@ -154,15 +169,22 @@ public static class SecondBrainPackageBuilder
                     string.Join(", ", features[featureId].RequirementIds))))),
             ["navigation-and-journeys.md"] = Markdown("Navigation and journeys", Bullets(blueprint.Navigation.Select(
                 edge => $"{edge.Id} {edge.SourceScreenId} → {edge.TargetScreenId} via {edge.ActionId}"))),
-            ["design-tokens.md"] = Markdown("Design tokens", Notes("designTokens")),
-            ["components-and-layout.md"] = Markdown("Components and layout", Notes("componentsAndLayout"),
+            ["design-tokens.md"] = Markdown("Design tokens",
+                builder?.ThemeBrand is { } theme ? JsonBlock(theme) : Notes("designTokens")),
+            ["components-and-layout.md"] = Markdown("Components and layout",
+                builder?.ComponentsLayout is { } componentLayout ? JsonBlock(componentLayout) : Notes("componentsAndLayout"),
                 Bullets(blueprint.Components.Select(component => $"{component.Id} {component.Type} on {component.ScreenId}"))),
-            ["interactions-and-states.md"] = Markdown("Interactions and states", Notes("interactionsAndStates"),
+            ["interactions-and-states.md"] = Markdown("Interactions and states",
+                builder?.InteractionsStates is { } states ? JsonBlock(states) : Notes("interactionsAndStates"),
                 Bullets(blueprint.Actions.Select(action => $"{action.Id} {action.Kind} on {action.ComponentId}" +
                     (action.NavigationId is null ? "" : $" via {action.NavigationId}")))),
-            ["accessibility-requirements.md"] = Markdown("Accessibility requirements", Notes("accessibilityRequirements")),
+            ["accessibility-requirements.md"] = Markdown("Accessibility requirements",
+                builder?.ThemeBrand is { } accessible ? JsonBlock(accessible.Accessibility) : Notes("accessibilityRequirements")),
             ["decision-register.md"] = Markdown("Decision register", $"Approved by {snapshot.ApprovedBy} at {snapshot.ApprovedAt:O}",
                 snapshot.BasedOnRevisionId is { } parent ? $"Based on approved revision {parent}" : "First approval lineage",
+                builder?.ReviewPreview is { } review
+                    ? Bullets(review.Decisions.Select(decision => $"{decision.Id} [{decision.Decision}] {decision.SubjectId}: {decision.Comment}"))
+                    : "",
                 Notes("decisionRegister")),
             ["open-questions.md"] = Markdown("Open questions", Notes("openQuestions")),
             ["validation-report.md"] = Markdown("Validation report",
@@ -170,6 +192,30 @@ public static class SecondBrainPackageBuilder
                 $"Validated draft version {snapshot.DraftVersion}."),
             ["implementation-checklist.md"] = Markdown("Implementation checklist", Notes("implementationChecklist"),
                 Bullets(blueprint.Features.Select(feature => $"[ ] Implement {feature.Id} {feature.Name}"))),
+            ["software-requirements-specification.md"] = Markdown("Software requirements specification",
+                snapshot.ProjectDescription,
+                "## Functional requirements",
+                Bullets(blueprint.Requirements.Select(requirement =>
+                    $"{requirement.Id} [{requirement.Status}] {requirement.Text}")),
+                "## Target platforms", Bullets(blueprint.TargetPlatforms)),
+            ["requirement-traceability-matrix.md"] = Markdown("Requirement traceability matrix",
+                Bullets(blueprint.Requirements.Select(requirement =>
+                {
+                    var mappedFeatures = blueprint.Features.Where(feature => feature.RequirementIds.Contains(requirement.Id)).ToArray();
+                    var mappedScreens = blueprint.Screens.Where(screen =>
+                        screen.FeatureIds.Any(featureId => mappedFeatures.Any(feature => feature.Id == featureId)));
+                    return $"{requirement.Id} → {string.Join(", ", mappedFeatures.Select(feature => feature.Id))} → " +
+                        string.Join(", ", mappedScreens.Select(screen => screen.Id));
+                }))),
+            ["developer-handoff.md"] = Markdown("Developer handoff",
+                $"Universal Blueprint schema {blueprint.SchemaVersion}",
+                $"Guided Builder schema {builder?.SchemaVersion ?? "not supplied"}",
+                $"Target platforms {string.Join(", ", blueprint.TargetPlatforms)}",
+                $"Screens {blueprint.Screens.Count}; components {blueprint.Components.Count}; actions {blueprint.Actions.Count}",
+                "Use universal-blueprint.json as the machine-readable UI contract and project.json as the immutable approved snapshot."),
+            ["universal-blueprint.json"] = JsonSerializer.Serialize(blueprint, Json) + "\n",
+            ["asset-manifest.json"] = JsonSerializer.Serialize(
+                builder?.ThemeBrand?.BrandAssets ?? [], Json) + "\n",
             ["project.json"] = JsonSerializer.Serialize(snapshot, Json) + "\n"
         };
 
@@ -181,6 +227,15 @@ public static class SecondBrainPackageBuilder
 
     private static string Bullets(IEnumerable<string> lines) =>
         string.Join("\n", lines.Select(line => $"- {line.ReplaceLineEndings(" ")}"));
+
+    private static string MarkdownSections(string firstTitle, IEnumerable<string> firstValues,
+        string secondTitle, IEnumerable<string> secondValues, string? thirdTitle = null,
+        IEnumerable<string>? thirdValues = null) =>
+        $"## {firstTitle}\n\n{Bullets(firstValues)}\n\n## {secondTitle}\n\n{Bullets(secondValues)}" +
+        (thirdTitle is null ? "" : $"\n\n## {thirdTitle}\n\n{Bullets(thirdValues ?? [])}");
+
+    private static string JsonBlock<T>(T value) =>
+        $"```json\n{JsonSerializer.Serialize(value, Json)}\n```";
 
     private static string Hash(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
     private static string Hash(Stream stream) => Convert.ToHexStringLower(SHA256.HashData(stream));

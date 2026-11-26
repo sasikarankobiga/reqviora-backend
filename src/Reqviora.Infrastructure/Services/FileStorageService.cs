@@ -1,13 +1,13 @@
 using Reqviora.Application.Common.Interfaces;
-
-using System.Buffers.Binary;
-using System.Net.Sockets;
-using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Reqviora.Infrastructure.Services;
 
-public sealed class FileStorageService(IOptions<StorageOptions> options) : IFileStorageService
+public sealed class FileStorageService(
+    IOptions<StorageOptions> options,
+    IFileThreatScanner threatScanner,
+    ILogger<FileStorageService> logger) : IFileStorageService
 {
     public async Task<string> SaveAsync(Stream content, string fileName, CancellationToken cancellationToken = default)
     {
@@ -26,11 +26,13 @@ public sealed class FileStorageService(IOptions<StorageOptions> options) : IFile
         if (buffer.Length == 0 || buffer.Length > value.MaxFileBytes)
             throw new InvalidDataException("File is empty or exceeds the configured size limit.");
         buffer.Position = 0;
-        var clean = await ScanAsync(buffer, value, cancellationToken);
-        // A positive malware result is always fatal. RequireAntivirus controls only
-        // whether an unavailable scanner may be bypassed outside production.
-        if (!clean)
+        var scan = await threatScanner.ScanAsync(buffer, cancellationToken);
+        if (scan.Status == FileThreatScanStatus.Infected)
             throw new InvalidDataException("File was rejected by antivirus scanning.");
+        if (scan.Status == FileThreatScanStatus.Unavailable && value.RequireAntivirus)
+            throw new IOException("The antivirus scanner is unavailable.");
+        if (scan.Status == FileThreatScanStatus.Unavailable)
+            logger.LogWarning("File storage is proceeding because antivirus is explicitly optional in this environment.");
         buffer.Position = 0;
         await using (var file = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                          81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
@@ -38,31 +40,44 @@ public sealed class FileStorageService(IOptions<StorageOptions> options) : IFile
         return relative.Replace('\\', '/');
     }
 
-    private static async Task<bool> ScanAsync(MemoryStream content, StorageOptions options, CancellationToken ct)
+    public Task<Stream> OpenReadAsync(string storagePath, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            using var client = new TcpClient();
-            await client.ConnectAsync(options.ClamAvHost, options.ClamAvPort, ct);
-            await using var network = client.GetStream();
-            await network.WriteAsync("zINSTREAM\0"u8.ToArray(), ct);
-            var chunk = new byte[8192];
-            int read;
-            while ((read = await content.ReadAsync(chunk, ct)) > 0)
-            {
-                var size = new byte[4];
-                BinaryPrimitives.WriteInt32BigEndian(size, read);
-                await network.WriteAsync(size, ct);
-                await network.WriteAsync(chunk.AsMemory(0, read), ct);
-            }
-            await network.WriteAsync(new byte[4], ct);
-            var response = new byte[1024];
-            var length = await network.ReadAsync(response, ct);
-            return System.Text.Encoding.UTF8.GetString(response, 0, length).Contains("OK", StringComparison.Ordinal);
-        }
-        catch (Exception exception) when (!options.RequireAntivirus && exception is SocketException or IOException)
-        {
-            return true;
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = ResolvePrivatePath(storagePath);
+        Stream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        return Task.FromResult(stream);
     }
+
+    public Task DeleteAsync(string storagePath, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = ResolvePrivatePath(storagePath);
+        if (File.Exists(path))
+            File.Delete(path);
+        return Task.CompletedTask;
+    }
+
+    public Task<Uri?> CreateSignedReadUrlAsync(
+        string storagePath,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = ResolvePrivatePath(storagePath);
+        return Task.FromResult<Uri?>(null);
+    }
+
+    private string ResolvePrivatePath(string storagePath)
+    {
+        var root = Path.GetFullPath(options.Value.RootPath);
+        if (string.IsNullOrWhiteSpace(storagePath) || Path.IsPathRooted(storagePath))
+            throw new InvalidDataException("Invalid storage path.");
+        var path = Path.GetFullPath(Path.Combine(root, storagePath));
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison))
+            throw new InvalidDataException("Invalid storage path.");
+        return path;
+    }
+
 }

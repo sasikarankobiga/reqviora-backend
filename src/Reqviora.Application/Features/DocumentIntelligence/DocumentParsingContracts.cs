@@ -33,6 +33,19 @@ public interface IDocumentTextParser
     );
 }
 
+public interface IDocumentOcrProvider
+{
+    bool IsEnabled { get; }
+
+    Task<DocumentParseResult> RecognizeAsync(
+        DocumentInputRequest document,
+        Stream fileContent,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class DocumentOcrException(string message, Exception? innerException = null)
+    : Exception(message, innerException);
+
 public interface ISourceEvidenceMapper
 {
     IReadOnlyList<SourceEvidenceRef> Map(DocumentParseResult result);

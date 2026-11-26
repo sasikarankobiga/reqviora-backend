@@ -30,9 +30,6 @@ internal static class DraftPersistenceConfiguration
         member.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.NoAction);
 
         var draft = model.Entity<ProjectDraft>();
-        draft.Property(x => x.IsReviewManaged)
-    .HasDefaultValue(false)
-    .IsRequired();
         draft.ToTable(table => table.HasCheckConstraint("CK_ProjectDrafts_Version", $"{versionColumn} > 0"));
         draft.HasIndex(x => x.ProjectId).IsUnique();
         draft.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
@@ -72,6 +69,8 @@ internal static class DraftPersistenceConfiguration
         validation.HasMany(x => x.Findings).WithOne().HasForeignKey(x => x.ValidationRunId)
             .OnDelete(DeleteBehavior.Cascade);
         model.Entity<ValidationFinding>().HasKey(x => new { x.ValidationRunId, x.Ordinal });
+        model.Entity<ValidationTelemetry>().HasIndex(x => x.UtcDay);
+        model.Entity<ValidationTelemetry>().Property(x => x.Workflow).HasMaxLength(16);
 
         var revision = model.Entity<ApprovedRevision>();
         if (sqlServer)
@@ -97,6 +96,17 @@ internal static class DraftPersistenceConfiguration
         export.HasOne<ApprovedRevision>().WithMany().HasForeignKey(x => x.ApprovedRevisionId)
             .OnDelete(DeleteBehavior.NoAction);
         export.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.NoAction);
+
+        var exportJob = model.Entity<ExportJobDiagnostic>();
+        exportJob.HasIndex(x => new { x.Status, x.CreatedAt });
+        exportJob.HasIndex(x => new { x.ProjectId, x.CreatedAt });
+        exportJob.Property(x => x.ExportType).HasMaxLength(50).IsRequired();
+        exportJob.Property(x => x.Status).HasMaxLength(20).IsRequired();
+        exportJob.Property(x => x.FailureCode).HasMaxLength(100);
+        exportJob.Property(x => x.FailureCategory).HasMaxLength(50);
+        exportJob.Property(x => x.IntegrityStatus).HasMaxLength(20).IsRequired();
+        exportJob.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+        exportJob.HasOne<ExportRecord>().WithMany().HasForeignKey(x => x.ExportRecordId).OnDelete(DeleteBehavior.NoAction);
     }
 
     private static void ConfigureGraph(ModelBuilder model, bool sqlServer)

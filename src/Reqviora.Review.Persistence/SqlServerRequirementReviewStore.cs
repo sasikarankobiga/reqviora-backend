@@ -59,71 +59,23 @@ public sealed class SqlServerRequirementReviewStore(string connectionString) : I
         await connection.OpenAsync(cancellationToken);
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(
             IsolationLevel.ReadCommitted, cancellationToken);
-
-        // Lock the project before committing a review decision.
-        // Other transactions following the same protocol must wait.
-        const string projectLockSql = """
-            SELECT [Id]
-            FROM [Projects] WITH (UPDLOCK, HOLDLOCK)
-            WHERE [Id] = @project_id;
+        const string lockSql = """
+            DECLARE @lock_result int;
+            EXEC @lock_result = sys.sp_getapplock
+                @Resource = @lock_resource,
+                @LockMode = 'Exclusive',
+                @LockOwner = 'Transaction',
+                @LockTimeout = 15000;
+            SELECT @lock_result;
             """;
-
-        await using (var projectLock = new SqlCommand(
-            projectLockSql, connection, transaction))
+        await using (var projectLock = new SqlCommand(lockSql, connection, transaction))
         {
-            projectLock.Parameters.Add(
-                "@project_id",
-                SqlDbType.UniqueIdentifier
-            ).Value = projectId;
-
-            var lockedProject =
-                await projectLock.ExecuteScalarAsync(
-                    cancellationToken);
-
-            if (lockedProject is null)
-            {
-                await transaction.RollbackAsync(cancellationToken);
-                return false;
-            }
+            projectLock.Parameters.Add("lock_resource", SqlDbType.NVarChar, 255).Value =
+                ProjectReviewLock.SqlServerResource(projectId);
+            var lockResult = Convert.ToInt32(await projectLock.ExecuteScalarAsync(cancellationToken));
+            if (lockResult < 0)
+                throw new TimeoutException("Could not acquire the project requirement-review lock.");
         }
-
-
-        // Block review changes while the current project draft
-        // is approved. A new draft must be started first.
-        const string approvedDraftSql = """
-            SELECT CASE WHEN EXISTS (
-                SELECT 1
-                FROM [ProjectDrafts]
-                WHERE [ProjectId] = @project_id
-                  AND [ApprovedRevisionId] IS NOT NULL
-            ) THEN 1 ELSE 0 END;
-            """;
-
-        await using (var approvedCheck = new SqlCommand(
-            approvedDraftSql, connection, transaction))
-        {
-            approvedCheck.Parameters.Add(
-                "@project_id",
-                SqlDbType.UniqueIdentifier
-            ).Value = projectId;
-
-            var approved =
-                await approvedCheck.ExecuteScalarAsync(
-                    cancellationToken);
-
-            if (Convert.ToInt32(approved) != 0)
-            {
-                await transaction.RollbackAsync(
-                    cancellationToken);
-
-                return false;
-            }
-        }
-
-
-
-
-
         const string updateSql = """
             UPDATE reqviora_review.requirements
             SET title = @title, description = @description, status = @status,

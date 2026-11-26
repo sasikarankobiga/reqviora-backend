@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
+using Reqviora.Application.Features.GuidedBuilder;
 
 namespace Reqviora.Api.Features.ProjectWorkflow;
 
@@ -125,3 +126,19 @@ public sealed record ProjectOverviewResponse(
     int FeatureCount,
     int ScreenCount,
     int NavigationCount);
+
+public sealed record BuilderStepSaveRequest<T>(
+    [Required] T Data,
+    Guid? ExpectedConcurrencyToken) where T : class;
+
+public sealed record GuidedBuilderResponse(
+    Guid DraftId,
+    Guid ProjectId,
+    int DraftVersion,
+    Guid ConcurrencyToken,
+    DateTime UpdatedAtUtc,
+    GuidedBuilderDocument Builder);
+
+public sealed record GuidedBuilderValidationResponse(
+    bool Passed,
+    IReadOnlyList<BuilderValidationIssue> Findings);
