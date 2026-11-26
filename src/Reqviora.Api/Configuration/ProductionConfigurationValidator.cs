@@ -147,6 +147,24 @@ public static class ProductionConfigurationValidator
             "AIJobs:MaxPromptCharacters must be between 1 and 1000000.");
         Require(configuration.GetValue<int>("AIJobs:MaxResultCharacters") is >= 1 and <= 10_000_000,
             "AIJobs:MaxResultCharacters must be between 1 and 10000000.");
+
+        if (configuration.GetValue<bool>("Billing:Enabled"))
+        {
+            Require(!string.IsNullOrWhiteSpace(configuration["Billing:MerchantId"]) &&
+                    !string.IsNullOrWhiteSpace(configuration["Billing:MerchantSecret"]),
+                "Billing requires secret-backed PayHere merchant credentials.");
+            Require(configuration.GetValue<long>("Billing:DefaultProjectPriceUsdMinor") > 0,
+                "Billing requires an approved positive USD project price.");
+            RequireSecureUrl(configuration["Billing:ReturnUrl"], "Billing:ReturnUrl");
+            RequireSecureUrl(configuration["Billing:CancelUrl"], "Billing:CancelUrl");
+            RequireSecureUrl(configuration["Billing:NotifyUrl"], "Billing:NotifyUrl");
+            Require(configuration.GetValue<int>("Billing:CheckoutExpiryMinutes") is >= 5 and <= 1440,
+                "Billing:CheckoutExpiryMinutes must be between 5 and 1440.");
+            if (configuration.GetValue<bool>("Billing:RefundsEnabled"))
+                Require(!string.IsNullOrWhiteSpace(configuration["Billing:AppId"]) &&
+                        !string.IsNullOrWhiteSpace(configuration["Billing:AppSecret"]),
+                    "Automated refunds require secret-backed PayHere Merchant API credentials.");
+        }
     }
 
     private static void RequireSecureUrl(string? value, string name)
