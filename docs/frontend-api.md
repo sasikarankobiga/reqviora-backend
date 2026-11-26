@@ -20,13 +20,20 @@ All project-content endpoints require `Authorization: Bearer <access-token>`. Ow
 | GET/POST | `/api/projects` | `CreateProjectDto` for POST | project list / `201` |
 | GET/PUT | `/api/projects/{projectId}` | `UpdateProjectDto` for PUT | project / `200` |
 | GET | `/api/projects/{projectId}/members` | none | owner/member roster |
-| PUT | `/api/projects/{projectId}/members/{userId}` | `{ "role": "Viewer" | "Editor" }` | add/update member |
+| PUT | `/api/projects/{projectId}/members/{userId}` | `{ "role": "Viewer" | "Editor" }` | update an accepted member |
 | DELETE | `/api/projects/{projectId}/members/{userId}` | none | `204` |
+| POST/GET | `/api/projects/{projectId}/invitations` | create body: `{ "recipientEmail", "role" }` | `201` / owner-only list |
+| POST | `/api/projects/{projectId}/invitations/{invitationId}/revoke` | none | revoke a pending invitation |
+| POST | `/api/projects/{projectId}/invitations/{invitationId}/resend` | none | replace token and resend email |
+| POST | `/api/project-invitations/accept` | `{ "token" }` | atomically create membership |
+| POST | `/api/project-invitations/reject` | `{ "token" }` | reject without membership |
 | GET | `/api/projects/{projectId}/overview` | none | project workflow counts and current token |
 | GET | `/api/workspaces` | none | owned workspaces |
 | GET | `/api/workspaces/{workspaceId}` | none | owned workspace |
 
 Registration passwords must contain 8–128 characters.
+
+New members must use the verified-email invitation lifecycle; the member `PUT` route no longer grants first-time access. See [secure project invitations](project-invitations.md) for response fields, errors, expiry, token handling, and Flutter examples.
 
 Project create and update use the same nine frontend fields: `name`, `description`, `industry`, `targetAudience`, `projectType`, `primaryPlatform`, `technologyPreferences`, `constraints`, and `integrations`. The owner identity is always taken from the access token and is never writable from the request body.
 

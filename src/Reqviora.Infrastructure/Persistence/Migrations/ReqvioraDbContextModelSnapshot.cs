@@ -1096,6 +1096,113 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("AcceptedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("CreatedAtUnixTimeMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NormalizedRecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("PendingRecipientKey")
+                        .HasMaxLength(353)
+                        .HasColumnType("character varying(353)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<DateTimeOffset?>("RejectedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RejectedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RevokedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("SupersedesInvitationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcceptedBy");
+
+                    b.HasIndex("CreatedBy");
+
+                    b.HasIndex("PendingRecipientKey")
+                        .IsUnique()
+                        .HasFilter("\"PendingRecipientKey\" IS NOT NULL");
+
+                    b.HasIndex("RejectedBy");
+
+                    b.HasIndex("RevokedBy");
+
+                    b.HasIndex("SupersedesInvitationId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("NormalizedRecipientEmail", "Status");
+
+                    b.HasIndex("ProjectId", "CreatedAtUnixTimeMilliseconds");
+
+                    b.ToTable("ProjectInvitations", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectInvitations_Role", "\"Role\" IN ('Viewer','Editor')");
+
+                            t.HasCheckConstraint("CK_ProjectInvitations_Status", "\"Status\" IN ('Pending','Accepted','Rejected','Revoked','Expired')");
+                        });
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.ProjectMember", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2088,6 +2195,41 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("BasedOnRevisionId", "ProjectId")
                         .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectInvitation", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AcceptedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RejectedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.ProjectInvitation", null)
+                        .WithMany()
+                        .HasForeignKey("SupersedesInvitationId")
                         .OnDelete(DeleteBehavior.NoAction);
                 });
 

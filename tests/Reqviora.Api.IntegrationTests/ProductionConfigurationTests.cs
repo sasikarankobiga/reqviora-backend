@@ -32,6 +32,7 @@ public sealed class ProductionConfigurationTests
     [InlineData("AIJobs:MaxAttempts", "0")]
     [InlineData("AIJobs:LeaseSeconds", "10")]
     [InlineData("AIJobs:MaxResultCharacters", "0")]
+    [InlineData("Invitations:ExpirationHours", "0")]
     public void Unsafe_production_configuration_is_rejected(string key, string value)
     {
         var values = Values();

@@ -32,6 +32,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectInvitation> ProjectInvitations => Set<ProjectInvitation>();
     public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
     public DbSet<DesignDraftVersion> DesignDraftVersions => Set<DesignDraftVersion>();
     public DbSet<DraftRequirement> DraftRequirements => Set<DraftRequirement>();
@@ -88,6 +89,39 @@ public class ReqvioraDbContext : DbContext
             entity.Property(x => x.Notes).HasMaxLength(1000);
             entity.HasOne<SupportIncident>().WithMany().HasForeignKey(x => x.IncidentId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.ChangedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<ProjectInvitation>(entity =>
+        {
+            var statusColumn = Database.IsSqlServer() ? "[Status]" : "\"Status\"";
+            var roleColumn = Database.IsSqlServer() ? "[Role]" : "\"Role\"";
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_ProjectInvitations_Status",
+                    $"{statusColumn} IN ('Pending','Accepted','Rejected','Revoked','Expired')");
+                table.HasCheckConstraint("CK_ProjectInvitations_Role",
+                    $"{roleColumn} IN ('Viewer','Editor')");
+            });
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => x.PendingRecipientKey).IsUnique()
+                .HasFilter(Database.IsSqlServer()
+                    ? "[PendingRecipientKey] IS NOT NULL"
+                    : "\"PendingRecipientKey\" IS NOT NULL");
+            entity.HasIndex(x => new { x.ProjectId, x.CreatedAtUnixTimeMilliseconds });
+            entity.HasIndex(x => new { x.NormalizedRecipientEmail, x.Status });
+            entity.Property(x => x.RecipientEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.NormalizedRecipientEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Role).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.TokenHash).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(x => x.PendingRecipientKey).HasMaxLength(353);
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.AcceptedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RejectedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RevokedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ProjectInvitation>().WithMany().HasForeignKey(x => x.SupersedesInvitationId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<User>(entity =>

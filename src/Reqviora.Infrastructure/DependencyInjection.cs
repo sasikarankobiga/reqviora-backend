@@ -21,6 +21,7 @@ using Reqviora.Application.Features.Validation;
 using Reqviora.Application.Features.PlatformSettings;
 using Reqviora.Application.Features.Incidents;
 using Reqviora.Application.Features.AdminProfile;
+using Reqviora.Application.Features.Sharing;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -213,6 +214,7 @@ public static class DependencyInjection
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
         services.Configure<AiJobOptions>(configuration.GetSection(AiJobOptions.SectionName));
         services.Configure<OcrOptions>(configuration.GetSection(OcrOptions.SectionName));
+        services.Configure<ProjectInvitationOptions>(configuration.GetSection(ProjectInvitationOptions.SectionName));
         var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         services.AddHttpClient<IAIService, AIService>(client =>
         {
@@ -265,6 +267,8 @@ public static class DependencyInjection
             .AddScoped<IPlatformSettings, PlatformSettingsService>()
             .AddScoped<IIncidentManagement, IncidentManagementService>()
             .AddScoped<IAdminProfileService, AdminProfileService>()
+            .AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>()
+            .AddScoped<IProjectInvitationService, ProjectInvitationService>()
             .AddScoped<ProjectExportService>()
             .AddScoped<IMcpGrantService, McpGrantService>()
             .AddScoped<IExportDiagnosticsService, ExportDiagnosticsService>()

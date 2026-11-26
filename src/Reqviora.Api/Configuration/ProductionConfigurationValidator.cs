@@ -61,6 +61,9 @@ public static class ProductionConfigurationValidator
         foreach (var origin in origins)
             RequireSecureUrl(origin, "Cors:AllowedOrigins");
 
+        Require(configuration.GetValue("Invitations:ExpirationHours", 72) is >= 1 and <= 720,
+            "Invitations:ExpirationHours must be between 1 and 720.");
+
         var forwardedHeaders = configuration.GetValue<bool>("ForwardedHeaders:Enabled");
         var trustedProxies = configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [];
         if (forwardedHeaders)

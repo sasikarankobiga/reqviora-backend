@@ -70,3 +70,9 @@ public sealed class OcrOptions
     public int MaxAttempts { get; set; } = 3;
     public int BaseRetryMilliseconds { get; set; } = 250;
 }
+
+public sealed class ProjectInvitationOptions
+{
+    public const string SectionName = "Invitations";
+    public int ExpirationHours { get; set; } = 72;
+}
