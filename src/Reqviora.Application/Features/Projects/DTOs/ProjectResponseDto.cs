@@ -6,4 +6,11 @@ public sealed record ProjectResponseDto(
     string Description,
     Guid OwnerId,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? LastModifiedAt);
+    DateTimeOffset? LastModifiedAt,
+    string Industry = "",
+    string TargetAudience = "",
+    string ProjectType = "",
+    string PrimaryPlatform = "web",
+    string TechnologyPreferences = "",
+    string Constraints = "",
+    string Integrations = "");

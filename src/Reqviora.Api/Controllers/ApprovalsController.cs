@@ -38,7 +38,7 @@ public sealed class ApprovalsController(ReqvioraDbContext db, ProjectDraftServic
         Guid projectId,
         CancellationToken cancellationToken)
     {
-        await RequireOwnerAsync(projectId, cancellationToken);
+        await RequireReadAsync(projectId, cancellationToken);
         var revisions = await db.ApprovedRevisions.AsNoTracking()
             .Where(revision => revision.ProjectId == projectId)
             .Join(
@@ -59,7 +59,7 @@ public sealed class ApprovalsController(ReqvioraDbContext db, ProjectDraftServic
         Guid revisionId,
         CancellationToken cancellationToken)
     {
-        await RequireOwnerAsync(projectId, cancellationToken);
+        await RequireReadAsync(projectId, cancellationToken);
         var item = await db.ApprovedRevisions.AsNoTracking()
             .Where(revision => revision.Id == revisionId && revision.ProjectId == projectId)
             .Join(
@@ -75,6 +75,6 @@ public sealed class ApprovalsController(ReqvioraDbContext db, ProjectDraftServic
 
     private Guid UserId => ProjectApiAccess.RequireUserId(User);
 
-    private Task RequireOwnerAsync(Guid projectId, CancellationToken cancellationToken) =>
-        ProjectApiAccess.RequireOwnerAsync(db, projectId, UserId, cancellationToken);
+    private Task RequireReadAsync(Guid projectId, CancellationToken cancellationToken) =>
+        ProjectApiAccess.RequireReadAsync(db, projectId, UserId, cancellationToken);
 }

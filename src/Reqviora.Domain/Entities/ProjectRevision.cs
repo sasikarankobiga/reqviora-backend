@@ -31,4 +31,21 @@ public sealed class ExportRecord : BaseEntity
     public string ManifestJson { get; init; } = "{}";
     public string ArchiveSha256 { get; init; } = string.Empty;
     public byte[] Archive { get; init; } = [];
+    public string? StoragePath { get; set; }
+}
+
+public sealed class ExportJobDiagnostic : BaseEntity
+{
+    public Guid ProjectId { get; init; }
+    public Guid ApprovedRevisionId { get; init; }
+    public Guid? ExportRecordId { get; set; }
+    public string ExportType { get; init; } = "SecondBrain";
+    public string Status { get; set; } = "Processing";
+    public DateTimeOffset CreatedAt { get; init; }
+    public DateTimeOffset StartedAt { get; init; }
+    public DateTimeOffset? CompletedAt { get; set; }
+    public long? DurationMilliseconds { get; set; }
+    public string? FailureCode { get; set; }
+    public string? FailureCategory { get; set; }
+    public string IntegrityStatus { get; set; } = "Unknown";
 }

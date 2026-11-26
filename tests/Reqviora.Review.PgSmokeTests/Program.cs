@@ -17,6 +17,13 @@ if (string.IsNullOrWhiteSpace(connectionString))
     return 2;
 }
 
+// These smoke tests execute DDL and write fixture data. Never target a shared database.
+if (new NpgsqlConnectionStringBuilder(connectionString).Host is not ("127.0.0.1" or "localhost"))
+{
+    Console.Error.WriteLine("Review smoke tests require a local disposable database server.");
+    return 2;
+}
+
 var projectId = Guid.NewGuid();
 var requirementId =
     "REQ-SMOKE-" +
@@ -56,53 +63,35 @@ await using var connection =
 
 await connection.OpenAsync();
 
+var schemaPath = Path.GetFullPath("database/reqviora_review/001_create_review_store.sql");
+await using (var schema = new NpgsqlCommand(await File.ReadAllTextAsync(schemaPath), connection))
+    await schema.ExecuteNonQueryAsync();
+await using (var schema = new NpgsqlCommand(await File.ReadAllTextAsync("database/reqviora_review/002_create_clarifications.sql"), connection))
+    await schema.ExecuteNonQueryAsync();
+
 try
 {
     // Seed one temporary requirement.
-    const string seedSql = """
-        INSERT INTO reqviora_review.requirements
-        (
-            project_id,
-            requirement_id,
-            title,
-            description,
-            status,
-            revision,
-            evidence_json
-        )
-        VALUES
-        (
-            @project_id,
-            @requirement_id,
-            @title,
-            @description,
-            'Suggested',
-            1,
-            @evidence_json
-        );
-        """;
+    var candidateStore = new RequirementCandidateStore(connectionString, sqlServer: false);
+    var candidate = new ReviewedRequirement(requirementId, "Login", "User login requirement",
+        RequirementReviewStatus.Suggested, 1, evidence, null, null);
+    await candidateStore.InsertAsync(projectId, new[] { candidate });
+    inserted = true;
+    var page = await candidateStore.ListAsync(projectId, 0, 10);
+    Check(page.Count == 1 && page[0].Id == requirementId && page[0].Status == RequirementReviewStatus.Suggested,
+        "Candidate insert and list share the review table");
+    Check((await candidateStore.ListAsync(Guid.NewGuid(), 0, 10)).Count == 0, "Candidate listing isolates projects");
+    Check((await candidateStore.ListAsync(projectId, 1, 10)).Count == 0, "Candidate listing honors pagination");
 
-    await using (var seed =
-        new NpgsqlCommand(seedSql, connection))
-    {
-        AddIdentity(seed);
-
-        seed.Parameters.AddWithValue(
-            "title", NpgsqlDbType.Varchar, "Login");
-
-        seed.Parameters.AddWithValue(
-            "description",
-            NpgsqlDbType.Varchar,
-            "User login requirement");
-
-        seed.Parameters.AddWithValue(
-            "evidence_json",
-            NpgsqlDbType.Jsonb,
-            JsonSerializer.Serialize(evidence));
-
-        await seed.ExecuteNonQueryAsync();
-        inserted = true;
-    }
+    var clarifications = new ClarificationStore(connectionString, sqlServer: false);
+    var question = new ClarificationQuestion(Guid.NewGuid(), requirementId, "Which login method?", null, 1, false);
+    await clarifications.InsertAsync(projectId, question);
+    Check((await clarifications.ListAsync(projectId, requirementId, 0, 10)).Single() == question, "Clarification is persisted");
+    Check(await clarifications.FindAsync(Guid.NewGuid(), requirementId, question.Id) is null, "Clarifications isolate projects");
+    var answer = ClarificationService.Answer(question, new(question.Id, 1, "Email"));
+    Check(await clarifications.TryAnswerAsync(projectId, answer, 1, reviewerId), "Clarification answer is persisted");
+    Check(!await clarifications.TryAnswerAsync(projectId, answer, 1, reviewerId), "Repeated answer is rejected");
+    Check(await clarifications.FindAsync(projectId, requirementId, question.Id) == answer, "Resolved answer can be read");
 
     var store = new PostgresRequirementReviewStore(
         connectionString);
@@ -130,12 +119,29 @@ try
         snapshot!.Requirement,
         decision);
 
-    var saved = await store.TryCommitAsync(
-        projectId, 1, result);
+    // Simulate the draft/approval transaction holding the same project lock.
+    // A concurrent review must wait, so confirmation reads and approval writes
+    // have one database-enforced order across application instances.
+    await using var approvalTransaction = await connection.BeginTransactionAsync();
+    await using (var approvalLock = new NpgsqlCommand(
+        "SELECT pg_advisory_xact_lock(@lock_key);", connection, approvalTransaction))
+    {
+        approvalLock.Parameters.AddWithValue(
+            "lock_key", NpgsqlDbType.Bigint, ProjectReviewLock.PostgreSqlKey(projectId));
+        await approvalLock.ExecuteNonQueryAsync();
+    }
+    var concurrentReview = store.TryCommitAsync(projectId, 1, result);
+    await Task.Delay(150);
+    Check(!concurrentReview.IsCompleted, "Concurrent review waits for the approval transaction");
+    await approvalTransaction.CommitAsync();
+    var saved = await concurrentReview;
 
     Check(saved, "Review revision commits");
 
     // TEST 3: Confirmed requirement persisted.
+    Check((await candidateStore.ListAsync(projectId, 0, 10)).Single().Status == RequirementReviewStatus.Confirmed,
+        "Candidate listing reflects the human review decision");
+
     var updated = await store.FindAsync(
         projectId, requirementId);
 

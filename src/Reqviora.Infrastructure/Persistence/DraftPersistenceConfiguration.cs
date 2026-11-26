@@ -69,6 +69,8 @@ internal static class DraftPersistenceConfiguration
         validation.HasMany(x => x.Findings).WithOne().HasForeignKey(x => x.ValidationRunId)
             .OnDelete(DeleteBehavior.Cascade);
         model.Entity<ValidationFinding>().HasKey(x => new { x.ValidationRunId, x.Ordinal });
+        model.Entity<ValidationTelemetry>().HasIndex(x => x.UtcDay);
+        model.Entity<ValidationTelemetry>().Property(x => x.Workflow).HasMaxLength(16);
 
         var revision = model.Entity<ApprovedRevision>();
         if (sqlServer)
@@ -89,10 +91,22 @@ internal static class DraftPersistenceConfiguration
         var export = model.Entity<ExportRecord>();
         export.Property(x => x.GeneratorVersion).HasMaxLength(32);
         export.Property(x => x.ArchiveSha256).HasMaxLength(64).IsUnicode(false);
+        export.Property(x => x.StoragePath).HasMaxLength(1000);
         export.HasIndex(x => new { x.ApprovedRevisionId, x.GeneratorVersion }).IsUnique();
         export.HasOne<ApprovedRevision>().WithMany().HasForeignKey(x => x.ApprovedRevisionId)
             .OnDelete(DeleteBehavior.NoAction);
         export.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.NoAction);
+
+        var exportJob = model.Entity<ExportJobDiagnostic>();
+        exportJob.HasIndex(x => new { x.Status, x.CreatedAt });
+        exportJob.HasIndex(x => new { x.ProjectId, x.CreatedAt });
+        exportJob.Property(x => x.ExportType).HasMaxLength(50).IsRequired();
+        exportJob.Property(x => x.Status).HasMaxLength(20).IsRequired();
+        exportJob.Property(x => x.FailureCode).HasMaxLength(100);
+        exportJob.Property(x => x.FailureCategory).HasMaxLength(50);
+        exportJob.Property(x => x.IntegrityStatus).HasMaxLength(20).IsRequired();
+        exportJob.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+        exportJob.HasOne<ExportRecord>().WithMany().HasForeignKey(x => x.ExportRecordId).OnDelete(DeleteBehavior.NoAction);
     }
 
     private static void ConfigureGraph(ModelBuilder model, bool sqlServer)

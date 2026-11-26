@@ -17,7 +17,7 @@ public sealed class NavigationController(ReqvioraDbContext db) : ControllerBase
         CancellationToken cancellationToken)
     {
         var userId = ProjectApiAccess.RequireUserId(User);
-        await ProjectApiAccess.RequireOwnerAsync(db, projectId, userId, cancellationToken);
+        await ProjectApiAccess.RequireReadAsync(db, projectId, userId, cancellationToken);
         var version = await ProjectApiAccess.FindCurrentVersionAsync(db, projectId, cancellationToken);
         var blueprint = ProjectApiAccess.ReadBlueprint(version?.BlueprintJson);
         return Ok(blueprint?.Navigation.Select(item => new NavigationResponse(

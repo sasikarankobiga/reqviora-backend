@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -12,7 +13,8 @@ namespace Reqviora.Application.Tests.Authentication;
 public sealed class JwtTokenServiceTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 18, 0, 0, 0, TimeSpan.Zero);
-    private const string SigningKey = "test-signing-key-with-at-least-32-characters";
+    private static readonly string SigningKey =
+        Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
     [Fact]
     public void CreateAccessToken_creates_valid_signed_token_with_user_claims()

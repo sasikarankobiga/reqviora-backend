@@ -9,6 +9,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="../Reqviora.Application/Reqviora.Application.csproj" />
+		<PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.2" />
 		<PackageReference Include="Npgsql" Version="10.0.3" />
 	</ItemGroup>
 

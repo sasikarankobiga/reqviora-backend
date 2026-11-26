@@ -1,6 +1,6 @@
 # REQVIORA frontend API guide
 
-All project-content endpoints require `Authorization: Bearer <access-token>` and are restricted to the authenticated project owner. JSON errors use ASP.NET `ProblemDetails`. A missing or invalid token returns `401`; cross-project access returns `403`; missing content returns `404`; and stale draft tokens return `409`.
+All project-content endpoints require `Authorization: Bearer <access-token>`. Owners have full access, Editors may read and edit workflow content, and Viewers have read-only access. Approval, export creation, metadata updates, and member administration remain owner-only. JSON errors use ASP.NET `ProblemDetails`. A missing or invalid token returns `401`; unauthorized project access returns `403`; missing content returns `404`; and stale draft tokens return `409`.
 
 ## Authentication and projects
 
@@ -10,14 +10,32 @@ All project-content endpoints require `Authorization: Bearer <access-token>` and
 | POST | `/api/auth/login` | `{ "email", "password" }` | `200 AuthResponseDto` |
 | POST | `/api/auth/refresh` | `{ "refreshToken" }` | `200 AuthResponseDto` |
 | POST | `/api/auth/logout` | `{ "refreshToken" }` | `204` |
+| POST | `/api/account-security/email-verification/request` | none; Bearer required | `202` or `204` if already verified |
+| POST | `/api/account-security/email-verification/confirm` | `{ "token" }` | `204` |
+| POST | `/api/account-security/password/forgot` | `{ "email" }` | `202` for known and unknown accounts |
+| POST | `/api/account-security/password/reset` | `{ "token", "newPassword" }` | `204` |
+| POST | `/api/account-security/email-change/request` | `{ "newEmail" }`; Bearer required | `202` |
+| POST | `/api/account-security/email-change/confirm` | `{ "token" }` | `204` |
 | GET | `/api/users/me` | none | `200 UserProfileDto` |
 | GET/POST | `/api/projects` | `CreateProjectDto` for POST | project list / `201` |
 | GET/PUT | `/api/projects/{projectId}` | `UpdateProjectDto` for PUT | project / `200` |
+| GET | `/api/projects/{projectId}/members` | none | owner/member roster |
+| PUT | `/api/projects/{projectId}/members/{userId}` | `{ "role": "Viewer" | "Editor" }` | update an accepted member |
+| DELETE | `/api/projects/{projectId}/members/{userId}` | none | `204` |
+| POST/GET | `/api/projects/{projectId}/invitations` | create body: `{ "recipientEmail", "role" }` | `201` / owner-only list |
+| POST | `/api/projects/{projectId}/invitations/{invitationId}/revoke` | none | revoke a pending invitation |
+| POST | `/api/projects/{projectId}/invitations/{invitationId}/resend` | none | replace token and resend email |
+| POST | `/api/project-invitations/accept` | `{ "token" }` | atomically create membership |
+| POST | `/api/project-invitations/reject` | `{ "token" }` | reject without membership |
 | GET | `/api/projects/{projectId}/overview` | none | project workflow counts and current token |
 | GET | `/api/workspaces` | none | owned workspaces |
 | GET | `/api/workspaces/{workspaceId}` | none | owned workspace |
 
 Registration passwords must contain 8–128 characters.
+
+New members must use the verified-email invitation lifecycle; the member `PUT` route no longer grants first-time access. See [secure project invitations](project-invitations.md) for response fields, errors, expiry, token handling, and Flutter examples.
+
+Project create and update use the same nine frontend fields: `name`, `description`, `industry`, `targetAudience`, `projectType`, `primaryPlatform`, `technologyPreferences`, `constraints`, and `integrations`. The owner identity is always taken from the access token and is never writable from the request body.
 
 ## Draft and Blueprint workflow
 
@@ -35,6 +53,7 @@ Create the first draft without a token. Every successful write returns a new `co
 | GET | `/api/projects/{projectId}/drafts/current` | Resume the current draft |
 | PUT | `/api/projects/{projectId}/drafts/current` | Save generic draft JSON |
 | GET | `/api/projects/{projectId}/drafts/versions` | Immutable version history |
+| POST | `/api/projects/{projectId}/drafts/versions/{version}/restore` | Restore a historical snapshot as a new current version |
 | POST | `/api/projects/{projectId}/drafts/start-after-approval` | Start a child draft from the approved revision |
 | GET | `/api/projects/{projectId}/blueprints/current` | Current Blueprint v1 document |
 | PUT | `/api/projects/{projectId}/blueprints/current` | Save draft JSON and a Blueprint v1 document |
@@ -45,6 +64,25 @@ Create the first draft without a token. Every successful write returns a new `co
 | GET | `/api/projects/{projectId}/blueprints/approved/{revisionId}` | One approved Blueprint |
 
 A stale or missing token on an existing draft returns `409`. Approval locks that draft. Call `start-after-approval` with its latest token before making further changes.
+
+## Eight-step guided builder
+
+The typed builder is persisted inside the same versioned draft under `guidedBuilder` (`schemaVersion: "1.0"`). Send the latest draft `concurrencyToken` as `expectedConcurrencyToken` on every step after the first. This preserves generic draft compatibility while preventing essential builder data from becoming opaque JSON.
+
+| Method | Route | Typed step |
+| --- | --- | --- |
+| GET | `/api/projects/{projectId}/builder` | Resume all steps and the current token |
+| PUT | `/api/projects/{projectId}/builder/steps/identity-audience` | Identity, audience, personas, roles and sources |
+| PUT | `/api/projects/{projectId}/builder/steps/features-screens` | Requirements, features, screens and coverage mappings |
+| PUT | `/api/projects/{projectId}/builder/steps/navigation` | Initial screen, routes, outcomes, conditions and roles |
+| PUT | `/api/projects/{projectId}/builder/steps/theme-brand` | Palette, tokens, typography, spacing, borders, elevation and breakpoints |
+| PUT | `/api/projects/{projectId}/builder/steps/components-layout` | Registry, properties, hierarchy and responsive layouts |
+| PUT | `/api/projects/{projectId}/builder/steps/interactions-states` | Fields, validation, actions, UI states and transitions |
+| PUT | `/api/projects/{projectId}/builder/steps/ai-design-workspace` | Protection, editable properties, alternatives, autosave and history |
+| PUT | `/api/projects/{projectId}/builder/steps/review-preview` | Preview graph, review decisions and coverage readiness |
+| POST | `/api/projects/{projectId}/builder/validate` | Complete cross-step validation report |
+
+Each PUT body is `{ "data": <typed-step>, "expectedConcurrencyToken": <token-or-null> }`. Writes reject broken IDs, unsupported component variants/properties, hierarchy cycles, unknown design tokens and invalid state/navigation references. Completion validation also reports missing steps, uncovered requirements, unused or unreachable screens, and incomplete review coverage.
 
 ## Requirements and generated graph
 
@@ -82,7 +120,7 @@ Review decisions are `accept`, `edit`, `reject`, or `defer` and require `expecte
 | GET | `/api/projects/{projectId}/exports/{exportId}` | One export's metadata |
 | GET | `/api/projects/{projectId}/exports/{exportId}/download` | Authorized ZIP download |
 
-An approval requires a passing validation run for the exact current draft version. Export reads verify the manifest and SHA-256 digest before returning content.
+An approval requires a passing validation run for the exact current draft version. When a `guidedBuilder` is present, all eight steps and their cross-step coverage must also pass before approval. Export generator 1.1 packages 24 manifest-tracked artifacts plus `manifest.json`, including the SRS, requirement traceability matrix, developer handoff, typed design documentation, `universal-blueprint.json`, `asset-manifest.json`, and immutable `project.json`. Export reads verify every file digest, the manifest, and the archive SHA-256 before returning content.
 
 ## Configuration
 
@@ -92,6 +130,29 @@ An approval requires a passing validation run for the exact current draft versio
 - `Jwt__Audience`
 - `Jwt__AccessTokenMinutes`
 - `Jwt__RefreshTokenDays`
+- `AccountLinks__BaseUrl` (HTTPS frontend origin for account-action links)
 - `Cors__AllowedOrigins__0` and subsequent indexes for browser clients
 
-Swagger is available at `/swagger` in the Development environment. Apply the EF migrations and `database/reqviora_review/001_create_review_store.sql` before using all endpoints.
+Swagger is available at `/swagger` in Development. Apply the EF migrations and the matching PostgreSQL `.sql` or SQL Server `.sqlserver.sql` Requirement Review schema before using all endpoints.
+
+Administrator Web uses the role-protected `/api/admin` surface documented in `admin-integration.md`. Account disable and role changes revoke existing sessions. These routes are not available to ordinary project owners, editors or viewers.
+
+Administrator profile screens use `/api/admin/profile`, `/security`, `/sessions`, and `/login-history`. A profile update may send only `displayName`. Session responses contain IDs and lifecycle timestamps only; they never contain access tokens, refresh tokens, hashes, password data, MFA secrets, or recovery codes. After deleting a session, treat a `401` from that session as final and return it to sign-in. Password change, email change, MFA and logout remain on the existing `/api/account-security` and `/api/auth` routes.
+
+## Input intelligence and feature-gated MCP V1 scope
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/projects/{projectId}/input-intelligence/requirements/extract` | Generate evidence-bound requirement candidates; body must include `consentGranted: true` and human review is still mandatory |
+| POST | `/api/projects/{projectId}/input-intelligence/voice/transcribe` | Transcribe consented Tamil or English multipart audio |
+| GET | `/api/mcp/v1/catalog` | Feature-gated read-only tools, resources and prompt catalog |
+| POST | `/api/mcp/v1/tools/call` | Invoke an allow-listed owner-scoped read-only tool |
+| GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
+| POST | `/api/projects/{projectId}/mcp/grants` | Owner creates a grant bound to an approved revision; raw credential is returned once |
+| GET | `/api/projects/{projectId}/mcp/grants` | Owner lists metadata for their project's grants |
+| POST | `/api/projects/{projectId}/mcp/grants/{grantId}/revoke` | Owner revokes a project grant with a reason |
+
+Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool. Tool calls also require the one-time-issued credential in `X-MCP-Grant`; the grant must match the authenticated owner and requested project and must remain unexpired and unrevoked. Store that credential in an approved client secret store because it cannot be retrieved again.
+## Private document downloads
+
+`GET /api/projects/{projectId}/documents/{documentId}/download` always requires an authenticated project reader. With local storage it streams the file through the backend. With the Supabase private-storage provider it returns `{ "url": "https://...", "expiresAt": "..." }`; the URL is short-lived and must not be persisted or shared. Storage object paths and the backend service key are never returned to Flutter or Admin Web clients.

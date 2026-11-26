@@ -68,4 +68,20 @@ public sealed class DraftsController(ProjectDraftService drafts) : ControllerBas
             cancellationToken);
         return Ok(ProjectApiAccess.ToResponse(draft));
     }
+
+    [HttpPost("versions/{version:int:min(1)}/restore")]
+    [ProducesResponseType<ProjectDraftResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ProjectDraftResponse>> Restore(
+        Guid projectId,
+        int version,
+        DraftTokenRequest request,
+        CancellationToken cancellationToken)
+    {
+        var draft = await drafts.RestoreVersionAsync(projectId,
+            ProjectApiAccess.RequireUserId(User), version, request.ExpectedConcurrencyToken,
+            cancellationToken);
+        return Ok(ProjectApiAccess.ToResponse(draft));
+    }
 }

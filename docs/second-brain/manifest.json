@@ -1,0 +1,107 @@
+{
+  "format": "reqviora.repository-documentation-manifest",
+  "schemaVersion": "1.0.0",
+  "generatorVersion": "1.0.0",
+  "projectId": "reqviora",
+  "revisionId": "reqviora-docs-r1",
+  "approvalStatus": "draft",
+  "createdOn": "2026-11-19",
+  "referenceCount": 19,
+  "files": [
+    {
+      "path": "README.md",
+      "sizeBytes": 2841,
+      "sha256": "1336873433d904759ae5a4601e4593787fd16bf963c309f0b12b923c8ca2c0aa"
+    },
+    {
+      "path": "project-overview.md",
+      "sizeBytes": 1875,
+      "sha256": "764af65753a93861549e313c4826da839080b8cc09d7d6f5e25637734f22eb74"
+    },
+    {
+      "path": "goals-and-success-criteria.md",
+      "sizeBytes": 1567,
+      "sha256": "c76dba41c7429c1efb2a6a76c9445875e261ca8ed967f0aa0ce7f5e3bd3dc3dd"
+    },
+    {
+      "path": "audience-and-roles.md",
+      "sizeBytes": 1449,
+      "sha256": "5bace2dda91f2c04a1f38c859a9b54ef8e6590b239aa0bfd4f7ffebbab42b4b1"
+    },
+    {
+      "path": "scope-and-constraints.md",
+      "sizeBytes": 1596,
+      "sha256": "65db90ab4b19da62692a319c1c15d5f19b2a4a144ba509fa197941f49b4d0e82"
+    },
+    {
+      "path": "feature-catalog.md",
+      "sizeBytes": 2097,
+      "sha256": "a5fedd9c6d899a037e738fd424a5ec9bd27235faeb671e630545ef6f953c218c"
+    },
+    {
+      "path": "business-rules-and-acceptance.md",
+      "sizeBytes": 2346,
+      "sha256": "8dc99ba3ee8fe7593f31d2451c6f8627ce2d908484e1c791e15fc8da2e561782"
+    },
+    {
+      "path": "screen-specifications.md",
+      "sizeBytes": 3472,
+      "sha256": "9ac25e9a1263bdfb619e36cc3089f713a5d322cbb1f4a93a5150f576e4cb2062"
+    },
+    {
+      "path": "feature-screen-mapping.md",
+      "sizeBytes": 7305,
+      "sha256": "32967546ece45492a2bb567a55722deda52a10aae26cdfd53d0e139e0d32117c"
+    },
+    {
+      "path": "navigation-and-journeys.md",
+      "sizeBytes": 2067,
+      "sha256": "a96de3667798658c9ae642c78cab6523a8af4c44baba8acf215b819ca70a46cf"
+    },
+    {
+      "path": "design-tokens.md",
+      "sizeBytes": 1280,
+      "sha256": "66b23c8a15af8643cb0a7aa4a6fe42ca918eb3a82835202a49fa03132cf3ace7"
+    },
+    {
+      "path": "components-and-layout.md",
+      "sizeBytes": 1518,
+      "sha256": "6972189f07bd0d4e59c07d783053bc3eb250889d39ca87aca37df567209f426e"
+    },
+    {
+      "path": "interactions-and-states.md",
+      "sizeBytes": 1667,
+      "sha256": "97a5fc99fe2020591cb9a6a826ee6a2d7fd9f3ba6bce530ebe2c1965a8e3844a"
+    },
+    {
+      "path": "accessibility-requirements.md",
+      "sizeBytes": 1445,
+      "sha256": "ac9274b28a8a792e56ad2cc4213a2e4ea27883a7a4d430ddaf904bacf9ab29fc"
+    },
+    {
+      "path": "decision-register.md",
+      "sizeBytes": 1433,
+      "sha256": "92f57638611b1b4fd82d1971c10db71c61225afb8f17d83de69e9282e85e2fa0"
+    },
+    {
+      "path": "open-questions.md",
+      "sizeBytes": 2557,
+      "sha256": "95c5020405bbdd552d0af6aca48992cd16349093442f28e80051db312c23a5ab"
+    },
+    {
+      "path": "validation-report.md",
+      "sizeBytes": 2234,
+      "sha256": "661c65e38319cdf9a2c9b6a4478301b7920721a8d84538f61a9a9d07e7320a6a"
+    },
+    {
+      "path": "implementation-checklist.md",
+      "sizeBytes": 5486,
+      "sha256": "8e7fe19d2657cc390141e4ea6f08be5503d5f262275515f1fd531997b4463e70"
+    },
+    {
+      "path": "project.json",
+      "sizeBytes": 17247,
+      "sha256": "4104244026848dc59fcabbee35edb6fcb499943992557b5ac80bae61467c0b88"
+    }
+  ]
+}

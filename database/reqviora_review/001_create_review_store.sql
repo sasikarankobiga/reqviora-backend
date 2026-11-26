@@ -81,8 +81,18 @@ CREATE TABLE IF NOT EXISTS reqviora_review.events
 );
 
 -- Keep this private schema out of client roles.
-REVOKE ALL ON SCHEMA reqviora_review
-    FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON SCHEMA reqviora_review FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA reqviora_review FROM PUBLIC;
 
-REVOKE ALL ON ALL TABLES IN SCHEMA reqviora_review
-    FROM PUBLIC, anon, authenticated;
+-- Supabase supplies these roles; standalone PostgreSQL may not.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON SCHEMA reqviora_review FROM anon;
+        REVOKE ALL ON ALL TABLES IN SCHEMA reqviora_review FROM anon;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON SCHEMA reqviora_review FROM authenticated;
+        REVOKE ALL ON ALL TABLES IN SCHEMA reqviora_review FROM authenticated;
+    END IF;
+END $$;

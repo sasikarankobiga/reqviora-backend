@@ -18,13 +18,21 @@ public sealed class ProjectServiceTests
         var ownerId = Guid.NewGuid();
 
         var result = await fixture.Service.CreateAsync(
-            new CreateProjectDto("  Coffee Shop  ", "  Ordering workspace  "),
+            new CreateProjectDto("  Coffee Shop  ", "  Ordering workspace  ", " Retail ", " Diners ",
+                " SaaS ", " Web ", " .NET ", " PCI compliant ", " Stripe "),
             ownerId);
 
         var project = Assert.Single(fixture.Repository.Projects);
         Assert.Equal(ownerId, project.OwnerId);
         Assert.Equal("Coffee Shop", project.Name);
         Assert.Equal("Ordering workspace", project.Description);
+        Assert.Equal("Retail", result.Industry);
+        Assert.Equal("Diners", result.TargetAudience);
+        Assert.Equal("SaaS", result.ProjectType);
+        Assert.Equal("web", result.PrimaryPlatform);
+        Assert.Equal(".NET", result.TechnologyPreferences);
+        Assert.Equal("PCI compliant", result.Constraints);
+        Assert.Equal("Stripe", result.Integrations);
         Assert.Equal(Now, project.CreatedAt);
         Assert.Equal(ownerId.ToString(), project.CreatedBy);
         Assert.Equal(project.Id, result.Id);
@@ -70,12 +78,20 @@ public sealed class ProjectServiceTests
 
         var result = await fixture.Service.UpdateAsync(
             project.Id,
-            new UpdateProjectDto("  New name  ", "  New description  "),
+            new UpdateProjectDto("  New name  ", "  New description  ", " Finance ", " Analysts ",
+                " Internal ", " MOBILE ", " C# ", " Offline ", " Entra ID "),
             ownerId);
 
         Assert.True(result.Succeeded);
         Assert.Equal("New name", project.Name);
         Assert.Equal("New description", project.Description);
+        Assert.Equal("Finance", project.Industry);
+        Assert.Equal("Analysts", project.TargetAudience);
+        Assert.Equal("Internal", project.ProjectType);
+        Assert.Equal("mobile", project.PrimaryPlatform);
+        Assert.Equal("C#", project.TechnologyPreferences);
+        Assert.Equal("Offline", project.Constraints);
+        Assert.Equal("Entra ID", project.Integrations);
         Assert.Equal(Now, project.LastModifiedAt);
         Assert.Equal(ownerId.ToString(), project.LastModifiedBy);
         Assert.Equal(1, fixture.UnitOfWork.SaveCount);
@@ -134,6 +150,7 @@ public sealed class ProjectServiceTests
         public Task<Project?> GetByIdAsync(
             Guid projectId,
             Guid ownerId,
+            bool requireOwner = false,
             bool trackChanges = false,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(Projects.SingleOrDefault(project =>
