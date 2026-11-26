@@ -44,6 +44,9 @@ public sealed class AiOptions
     public string Model { get; set; } = "gpt-5-mini";
     public string TranscriptionModel { get; set; } = "gpt-4o-mini-transcribe";
     public int TimeoutSeconds { get; set; } = 120;
+    public int MaxAttempts { get; set; } = 3;
+    public int BaseRetryMilliseconds { get; set; } = 250;
+    public int MaxResponseCharacters { get; set; } = 2_000_000;
 }
 
 public sealed class AiJobOptions

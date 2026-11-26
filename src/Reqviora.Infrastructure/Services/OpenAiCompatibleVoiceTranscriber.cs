@@ -20,21 +20,36 @@ public sealed class OpenAiCompatibleVoiceTranscriber(
         var value = options.Value;
         if (string.IsNullOrWhiteSpace(value.ApiKey))
             throw new InvalidOperationException("AI API key is not configured.");
-        using var form = new MultipartFormDataContent();
-        using var audio = new StreamContent(audioContent);
-        audio.Headers.ContentType = MediaTypeHeaderValue.Parse(request.MediaType);
-        form.Add(audio, "file", "audio" + Extension(request.MediaType));
-        form.Add(new StringContent(value.TranscriptionModel), "model");
-        form.Add(new StringContent(request.LanguageCode.StartsWith("ta", StringComparison.Ordinal) ? "ta" : "en"), "language");
-        form.Add(new StringContent("verbose_json"), "response_format");
-        using var message = new HttpRequestMessage(HttpMethod.Post, "audio/transcriptions") { Content = form };
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", value.ApiKey);
-        using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var json = await JsonDocument.ParseAsync(
-            await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-        var text = json.RootElement.GetProperty("text").GetString()?.Trim()
-            ?? throw new InvalidDataException("Transcription provider returned no text.");
+        using var buffer = new MemoryStream();
+        await audioContent.CopyToAsync(buffer, cancellationToken);
+        if (buffer.Length != request.SizeBytes)
+            throw new ArgumentException("Audio size does not match its metadata.", nameof(audioContent));
+        var bytes = buffer.ToArray();
+        var body = await ExternalProviderProtocol.SendForTextAsync(http, () =>
+        {
+            var form = new MultipartFormDataContent();
+            var audio = new ByteArrayContent(bytes);
+            audio.Headers.ContentType = MediaTypeHeaderValue.Parse(request.MediaType);
+            form.Add(audio, "file", "audio" + Extension(request.MediaType));
+            form.Add(new StringContent(value.TranscriptionModel), "model");
+            form.Add(new StringContent(request.LanguageCode.StartsWith("ta", StringComparison.Ordinal) ? "ta" : "en"), "language");
+            form.Add(new StringContent("verbose_json"), "response_format");
+            var message = new HttpRequestMessage(HttpMethod.Post, "audio/transcriptions") { Content = form };
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", value.ApiKey);
+            return message;
+        }, "TRANSCRIPTION", value.MaxAttempts, value.BaseRetryMilliseconds,
+            value.MaxResponseCharacters, cancellationToken);
+        try
+        {
+            using var json = JsonDocument.Parse(body, new JsonDocumentOptions
+            {
+                AllowDuplicateProperties = false,
+                MaxDepth = 32
+            });
+            var text = json.RootElement.GetProperty("text").GetString()?.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+                throw new ExternalProviderException("TRANSCRIPTION_INVALID_RESPONSE",
+                    "Transcription provider returned an invalid response.");
         var segments = new List<TranscriptSegment>();
         if (json.RootElement.TryGetProperty("segments", out var items))
         {
@@ -53,6 +68,14 @@ public sealed class OpenAiCompatibleVoiceTranscriber(
             Guid.NewGuid(), request.AudioFileId, request.LanguageCode, text, text, 1, segments);
         VoiceTranscriptionContractValidator.Validate(draft);
         return draft;
+        }
+        catch (ExternalProviderException) { throw; }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or
+                                           KeyNotFoundException)
+        {
+            throw new ExternalProviderException("TRANSCRIPTION_INVALID_RESPONSE",
+                "Transcription provider returned an invalid response.", exception);
+        }
     }
 
     private static string Extension(string mediaType) => mediaType switch

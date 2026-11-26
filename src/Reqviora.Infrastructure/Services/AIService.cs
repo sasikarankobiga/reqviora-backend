@@ -15,19 +15,40 @@ public sealed class AIService(HttpClient http, IOptions<AiOptions> options) : IA
         if (string.IsNullOrWhiteSpace(value.ApiKey))
             throw new InvalidOperationException("AI API key is not configured.");
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
+        var body = await ExternalProviderProtocol.SendForTextAsync(http, () =>
         {
-            Content = JsonContent.Create(new
+            var request = new HttpRequestMessage(HttpMethod.Post, "chat/completions")
             {
-                model = value.Model,
-                messages = new[] { new { role = "user", content = prompt } }
-            })
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", value.ApiKey);
-        using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-        return json.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()
-            ?? throw new InvalidDataException("AI provider returned an empty completion.");
+                Content = JsonContent.Create(new
+                {
+                    model = value.Model,
+                    messages = new[] { new { role = "user", content = prompt } }
+                })
+            };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", value.ApiKey);
+            return request;
+        }, "AI", value.MaxAttempts, value.BaseRetryMilliseconds, value.MaxResponseCharacters,
+            cancellationToken);
+        try
+        {
+            using var json = JsonDocument.Parse(body, new JsonDocumentOptions
+            {
+                AllowDuplicateProperties = false,
+                MaxDepth = 32
+            });
+            var content = json.RootElement.GetProperty("choices")[0].GetProperty("message")
+                .GetProperty("content").GetString()?.Trim();
+            return !string.IsNullOrWhiteSpace(content)
+                ? content
+                : throw new ExternalProviderException("AI_INVALID_RESPONSE",
+                    "AI provider returned an invalid response.");
+        }
+        catch (ExternalProviderException) { throw; }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or
+                                           KeyNotFoundException or IndexOutOfRangeException)
+        {
+            throw new ExternalProviderException("AI_INVALID_RESPONSE",
+                "AI provider returned an invalid response.", exception);
+        }
     }
 }
