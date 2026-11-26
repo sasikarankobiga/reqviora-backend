@@ -49,6 +49,37 @@ public sealed class ProductionConfigurationTests
         values["AI:ApiKey"] = "";
         Assert.Throws<InvalidOperationException>(() =>
             ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["AI:ApiKey"] = "from-secret-store";
+        values["AI:Endpoint"] = "https://ai.example.test/v1/";
+        values["AI:Model"] = "approved-completion";
+        values["AI:TranscriptionModel"] = "approved-transcription";
+        values["AI:TimeoutSeconds"] = "120";
+        values["AI:MaxAttempts"] = "3";
+        values["AI:BaseRetryMilliseconds"] = "250";
+        values["AI:MaxResponseCharacters"] = "2000000";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Theory]
+    [InlineData("AI:MaxAttempts", "0")]
+    [InlineData("AI:BaseRetryMilliseconds", "0")]
+    [InlineData("AI:MaxResponseCharacters", "999")]
+    public void Enabled_ai_rejects_unsafe_protocol_limits(string key, string value)
+    {
+        var values = Values();
+        values["AI:Enabled"] = "true";
+        values["AI:ApiKey"] = "from-secret-store";
+        values["AI:Endpoint"] = "https://ai.example.test/v1/";
+        values["AI:Model"] = "approved-completion";
+        values["AI:TranscriptionModel"] = "approved-transcription";
+        values["AI:TimeoutSeconds"] = "120";
+        values["AI:MaxAttempts"] = "3";
+        values["AI:BaseRetryMilliseconds"] = "250";
+        values["AI:MaxResponseCharacters"] = "2000000";
+        values[key] = value;
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
     }
 
     [Fact]

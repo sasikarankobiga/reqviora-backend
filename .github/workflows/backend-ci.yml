@@ -2,10 +2,13 @@ name: Backend CI
 
 on:
   push:
-    branches: [main, develop, Kobiga, Rashmina, Varmitha, feature/kobiga-core-workflow]
+    branches: [main, develop, Kobiga, Rashmina, Varmitha, feature/kobiga-core-workflow, feature/kobiga-admin-completion]
   pull_request:
     branches: [main, develop]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-and-test:
@@ -38,9 +41,37 @@ jobs:
           --health-retries 18
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+      - name: Restore tools and dependencies
+        run: |
+          dotnet tool restore
+          dotnet restore Reqviora.sln -p:NuGetAudit=true -p:NuGetAuditMode=all
+      - name: Build Debug and Release
+        run: |
+          dotnet build Reqviora.sln --configuration Debug --no-restore
+          dotnet build Reqviora.sln --configuration Release --no-restore
+      - name: Audit vulnerable dependencies
+        shell: bash
+        run: |
+          audit_output="$(dotnet list Reqviora.sln package --vulnerable --include-transitive)"
+          printf '%s\n' "${audit_output}"
+          if grep -q "has the following vulnerable packages" <<<"${audit_output}"; then
+            exit 1
+          fi
+      - name: Verify EF models match migrations
+        shell: bash
+        env:
+          ASPNETCORE_ENVIRONMENT: Development
+          ConnectionStrings__ReqvioraDatabase: Host=127.0.0.1;Database=reqviora_tooling;Username=tooling;Password=not-used
+          Jwt__Key: migration-tooling-signing-key-at-least-32-characters
+          REQVIORA_SQLSERVER_CONNECTION: Server=127.0.0.1;Database=reqviora_tooling;User Id=tooling;Password=not-used;TrustServerCertificate=True
+        run: |
+          dotnet ef migrations has-pending-model-changes --no-build --project src/Reqviora.Infrastructure --startup-project src/Reqviora.Api --context ReqvioraDbContext
+          dotnet ef migrations has-pending-model-changes --no-build --project src/Reqviora.SqlServer.Persistence --startup-project src/Reqviora.SqlServer.Persistence --context SqlServerReqvioraDbContext
       - name: Select PostgreSQL 16 client tools
         shell: bash
         run: |
@@ -62,7 +93,8 @@ jobs:
           command -v pg_restore
           "${postgres_bin}/pg_dump" --version
           "${postgres_bin}/pg_restore" --version
-      - run: dotnet test Reqviora.sln --configuration Release
+      - name: Run xUnit regression and native database tests
+        run: dotnet test Reqviora.sln --configuration Release --no-build --no-restore
         env:
           REQVIORA_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=postgres;Username=postgres;Password=reqviora_ci_postgres
           REQVIORA_TEST_SQLSERVER: Server=127.0.0.1,1433;Database=master;User ID=sa;Password=ReqvioraCi_SQL_2026!;TrustServerCertificate=True
@@ -91,3 +123,29 @@ jobs:
           done
       - name: Verify production container build
         run: docker build --tag reqviora-backend:ci .
+      - name: Validate production Compose configuration
+        shell: bash
+        env:
+          POSTGRES_PASSWORD: compose-validation-password
+          JWT_KEY: compose-validation-signing-key-at-least-32-characters
+          ACCOUNTLINKS__BASEURL: https://app.example.test
+          CORS__ALLOWEDORIGINS__0: https://app.example.test
+          SMTP__HOST: smtp.example.test
+          SMTP__USERNAME: compose-validation-user
+          SMTP__PASSWORD: compose-validation-password
+          SMTP__FROMADDRESS: no-reply@example.test
+          DATA_PROTECTION_CERTIFICATE_PASSWORD: compose-validation-password
+        run: |
+          certificate="${RUNNER_TEMP}/compose-validation.pfx"
+          : > "${certificate}"
+          export DATA_PROTECTION_CERTIFICATE_PATH="${certificate}"
+          docker compose config --quiet
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Scan Git history and working tree for secrets
+        uses: gitleaks/gitleaks-action@v2

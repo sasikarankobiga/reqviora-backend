@@ -7,6 +7,7 @@ Administrator APIs require a valid JWT whose current database role is `Admin` or
 | Method | Route | Purpose |
 | --- | --- | --- |
 | GET | `/api/admin/dashboard` | User, project, workspace, AI queue, audit and failed-login totals |
+| GET | `/api/admin/system-health` | Sanitized readiness-component states and durations; no endpoints, exception text or credentials |
 | GET | `/api/admin/users` | Paginated users; filters: `page`, `pageSize`, `search`, `status` |
 | PUT | `/api/admin/users/{userId}/status` | Disable or re-enable an account |
 | PUT | `/api/admin/users/{userId}/role` | Assign an existing database role or `User` |
