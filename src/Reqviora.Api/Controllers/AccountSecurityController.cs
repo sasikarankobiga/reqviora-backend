@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Reqviora.Application.Common.Interfaces;
+using Reqviora.Api.Features.Authentication;
 using Reqviora.Application.Features.Authentication.DTOs;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
@@ -23,7 +24,8 @@ public sealed class AccountSecurityController(
     IPasswordHasher<User> passwordHasher,
     IConfiguration configuration,
     TimeProvider clock,
-    ILogger<AccountSecurityController> logger) : ControllerBase
+    ILogger<AccountSecurityController> logger,
+    EmailVerificationSender verification) : ControllerBase
 {
     [Authorize]
     [HttpPost("email-verification/request")]
@@ -33,18 +35,22 @@ public sealed class AccountSecurityController(
         if (user is null) return Unauthorized();
         if (user.EmailVerified) return NoContent();
 
-        var token = await IssueTokenAsync(user, AccountActionPurpose.EmailVerification, null, cancellationToken);
-        if (!await TrySendAsync(
-                user.Email,
-                "Verify your REQVIORA email",
-                BuildLink("verify-email", token),
-                cancellationToken))
+        if (!await verification.SendAsync(user, cancellationToken))
         {
             return Problem(
                 title: "Email delivery is temporarily unavailable.",
                 statusCode: StatusCodes.Status503ServiceUnavailable);
         }
 
+        return Accepted();
+    }
+
+    [AllowAnonymous]
+    [HttpPost("email-verification/resend")]
+    public async Task<IActionResult> ResendEmailVerification(ForgotPasswordRequestDto request, CancellationToken cancellationToken)
+    {
+        await verification.ResendAsync(request.Email, cancellationToken);
+        // Do not reveal whether the address exists or is verified.
         return Accepted();
     }
 
@@ -58,11 +64,14 @@ public sealed class AccountSecurityController(
             request.Token,
             AccountActionPurpose.EmailVerification,
             cancellationToken);
-        if (action is null)
+        if (action is null || action.User.EmailVerified || action.TargetValue != action.User.NormalizedEmail)
             return Problem(title: "The verification token is invalid or expired.", statusCode: StatusCodes.Status400BadRequest);
 
         action.User.EmailVerified = true;
-        action.ConsumedAt = clock.GetUtcNow();
+        var pending = await db.AccountActionTokens.Where(x => x.UserId == action.UserId &&
+            x.Purpose == AccountActionPurpose.EmailVerification && x.ConsumedAt == null).ToListAsync(cancellationToken);
+        var now = clock.GetUtcNow();
+        foreach (var item in pending) item.ConsumedAt = now;
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
@@ -89,6 +98,28 @@ public sealed class AccountSecurityController(
         return Accepted();
     }
 
+    [Authorize]
+    [HttpPost("password/change")]
+    public async Task<IActionResult> ChangePassword(
+        ChangePasswordRequestDto request,
+        CancellationToken cancellationToken)
+    {
+        var user = await CurrentUserAsync(cancellationToken);
+        if (user is null) return Unauthorized();
+
+        var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.CurrentPassword);
+        if (verification == PasswordVerificationResult.Failed)
+            return Problem(title: "The current password is invalid.", statusCode: StatusCodes.Status400BadRequest);
+        if (string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+            return Problem(title: "The new password must be different.", statusCode: StatusCodes.Status400BadRequest);
+
+        user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
+        user.SessionVersion = checked(user.SessionVersion + 1);
+        await RevokeSessionsAsync(user.Id, cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
+    }
+
     [AllowAnonymous]
     [HttpPost("password/reset")]
     public async Task<IActionResult> ResetPassword(
@@ -100,6 +131,7 @@ public sealed class AccountSecurityController(
             return Problem(title: "The password-reset token is invalid or expired.", statusCode: StatusCodes.Status400BadRequest);
 
         action.User.PasswordHash = passwordHasher.HashPassword(action.User, request.NewPassword);
+        action.User.SessionVersion = checked(action.User.SessionVersion + 1);
         action.ConsumedAt = clock.GetUtcNow();
         await RevokeSessionsAsync(action.UserId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -152,6 +184,7 @@ public sealed class AccountSecurityController(
         action.User.Email = action.TargetValue;
         action.User.NormalizedEmail = normalizedEmail;
         action.User.EmailVerified = true;
+        action.User.SessionVersion = checked(action.User.SessionVersion + 1);
         action.ConsumedAt = clock.GetUtcNow();
         await RevokeSessionsAsync(action.UserId, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);

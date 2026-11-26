@@ -58,31 +58,37 @@ public static class VoiceTranscriptionContractValidator
                 "Unsupported transcript language.");
         }
 
-        if (draft.Revision < 1)
+        if (draft.Revision != 1)
             throw new ArgumentException(
                 "Transcript revision must start at 1.");
 
         if (string.IsNullOrWhiteSpace(draft.OriginalText) ||
-            string.IsNullOrWhiteSpace(draft.EditableText))
+            draft.OriginalText.Length > 100_000 ||
+            string.IsNullOrWhiteSpace(draft.EditableText) ||
+            draft.EditableText.Length > 100_000)
         {
             throw new ArgumentException(
                 "Transcript text is required.");
         }
 
-        if (draft.Segments is null)
+        if (draft.Segments is null || draft.Segments.Count is < 1 or > 5000)
             throw new ArgumentException(
                 "Transcript segments are required.");
 
+        long previousEnd = 0;
         foreach (var segment in draft.Segments)
         {
             if (segment is null ||
                 segment.StartMs < 0 ||
+                segment.StartMs < previousEnd ||
                 segment.EndMs <= segment.StartMs ||
-                string.IsNullOrWhiteSpace(segment.Text))
+                string.IsNullOrWhiteSpace(segment.Text) ||
+                segment.Text.Length > 20_000)
             {
                 throw new ArgumentException(
                     "Invalid transcript segment.");
             }
+            previousEnd = segment.EndMs;
         }
     }
 
@@ -90,7 +96,8 @@ public static class VoiceTranscriptionContractValidator
     {
         if (request.TranscriptId == Guid.Empty ||
             request.ExpectedRevision < 1 ||
-            string.IsNullOrWhiteSpace(request.EditedText))
+            string.IsNullOrWhiteSpace(request.EditedText) ||
+            request.EditedText.Length > 100_000)
         {
             throw new ArgumentException(
                 "Invalid transcript edit request.");

@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Security;
 
@@ -105,6 +106,68 @@ public sealed class LoginSecurityServiceTests
         Assert.True(service.ValidateOtp(user, recovery));
         Assert.Empty(user.RecoveryCodeHashes);
         Assert.False(service.ValidateOtp(user, recovery));
+    }
+
+    [Fact]
+    public async Task Authenticator_code_cannot_be_replayed_for_login()
+    {
+        await using var database = await PersistenceDatabase.CreateAsync("sqlite");
+        await using var db = database.Open();
+        var protection = new EphemeralDataProtectionProvider();
+        var user = UserWithMfa(protection);
+        user.MfaSecretProtected = protection.CreateProtector("Reqviora.MfaSecret.v1")
+            .Protect(Convert.ToBase64String(Encoding.ASCII.GetBytes("12345678901234567890")));
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+        var clock = new FixedClock(DateTimeOffset.FromUnixTimeSeconds(59));
+        var service = new LoginSecurityService(db, protection,
+            new ConfigurationBuilder().Build(), clock);
+        // RFC 6238 SHA-1 test vector truncated to six digits.
+        Assert.True(await service.VerifyLoginOtpAsync(user, "local", "device", "287082", default));
+        Assert.False(await service.VerifyLoginOtpAsync(user, "local", "device", "287082", default));
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
+    public async Task Refresh_token_cannot_be_rotated_twice_from_stale_contexts()
+    {
+        await using var database = await PersistenceDatabase.CreateAsync("sqlite");
+        await using var first = database.Open();
+        var user = UserWithMfa(new EphemeralDataProtectionProvider());
+        first.Users.Add(user);
+        var token = new RefreshToken { UserId = user.Id, TokenHash = new string('a', 64), ExpiresAt = DateTimeOffset.UtcNow.AddDays(1) };
+        first.RefreshTokens.Add(token);
+        await first.SaveChangesAsync();
+        await using var second = database.Open();
+        var stale = await second.RefreshTokens.SingleAsync();
+        token.RevokedAt = DateTimeOffset.UtcNow;
+        await first.SaveChangesAsync();
+        stale.RevokedAt = DateTimeOffset.UtcNow;
+        stale.ReplacedByTokenHash = new string('b', 64);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Recovery_code_removal_cannot_be_overwritten_from_stale_context()
+    {
+        await using var database = await PersistenceDatabase.CreateAsync("sqlite");
+        await using var first = database.Open();
+        var protection = new EphemeralDataProtectionProvider();
+        var user = UserWithMfa(protection);
+        const string recovery = "abcd1234ef";
+        user.RecoveryCodeHashes = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(recovery)));
+        first.Users.Add(user);
+        await first.SaveChangesAsync();
+        await using var second = database.Open();
+        var stale = await second.Users.SingleAsync();
+        Assert.True(Create(first, protection).ValidateOtp(user, recovery));
+        Assert.True(Create(second, protection).ValidateOtp(stale, recovery));
+        await first.SaveChangesAsync();
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
     }
 
     private static LoginSecurityService Create(

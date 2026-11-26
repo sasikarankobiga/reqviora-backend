@@ -47,10 +47,11 @@ public sealed class ProjectMembersController(ReqvioraDbContext db) : ControllerB
         var member = await db.ProjectMembers.SingleOrDefaultAsync(item =>
             item.ProjectId == projectId && item.UserId == memberUserId, cancellationToken);
         if (member is null)
-        {
-            member = new ProjectMember { ProjectId = projectId, UserId = memberUserId };
-            db.ProjectMembers.Add(member);
-        }
+            return Conflict(new ProblemDetails
+            {
+                Title = "Membership requires an accepted project invitation.",
+                Detail = "Create an invitation for the recipient, then update the role after acceptance."
+            });
         member.Role = ProjectMemberRoles.Normalize(request.Role);
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new ProjectMemberResponse(member.UserId, member.Role, member.JoinedAtUtc));

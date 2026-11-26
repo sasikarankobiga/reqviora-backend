@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+using Reqviora.Api.Features.Authentication;
+using Reqviora.Infrastructure.Persistence;
 using Reqviora.Application.Features.Authentication.DTOs;
 using Reqviora.Application.Features.Authentication.Interfaces;
 
@@ -9,17 +12,22 @@ namespace Reqviora.Api.Controllers;
 [ApiController]
 [Route("api/auth")]
 [EnableRateLimiting("authentication")]
-public sealed class AuthController(IAuthService authService) : ControllerBase
+public sealed class AuthController(IAuthService authService, ReqvioraDbContext db, EmailVerificationSender verification) : ControllerBase
 {
     [AllowAnonymous]
     [HttpPost("register")]
-    [ProducesResponseType<AuthResponseDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType<RegistrationResponseDto>(StatusCodes.Status201Created)]
     public async Task<IActionResult> Register(RegisterRequestDto request, CancellationToken cancellationToken)
     {
         var result = await authService.RegisterAsync(request, cancellationToken);
-        return result.Succeeded
-            ? StatusCode(StatusCodes.Status201Created, result.Value)
-            : Problem(title: result.Error, statusCode: StatusCodes.Status409Conflict);
+        if (!result.Succeeded)
+            return Problem(title: result.Error, statusCode: StatusCodes.Status409Conflict);
+
+        var profile = result.Value!;
+        var user = await db.Users.SingleAsync(x => x.Id == profile.UserId, cancellationToken);
+        var sent = await verification.SendAsync(user, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created,
+            new RegistrationResponseDto(profile.UserId, profile.Email, profile.DisplayName, profile.EmailVerified, sent));
     }
 
     [AllowAnonymous]
