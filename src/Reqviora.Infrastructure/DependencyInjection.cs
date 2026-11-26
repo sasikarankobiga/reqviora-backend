@@ -23,6 +23,7 @@ using Reqviora.Application.Features.Incidents;
 using Reqviora.Application.Features.AdminProfile;
 using Reqviora.Application.Features.Sharing;
 using Reqviora.Application.Features.AdminHealth;
+using Reqviora.Application.Features.Billing;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -216,6 +217,7 @@ public static class DependencyInjection
         services.Configure<AiJobOptions>(configuration.GetSection(AiJobOptions.SectionName));
         services.Configure<OcrOptions>(configuration.GetSection(OcrOptions.SectionName));
         services.Configure<ProjectInvitationOptions>(configuration.GetSection(ProjectInvitationOptions.SectionName));
+        services.Configure<BillingOptions>(configuration.GetSection(BillingOptions.SectionName));
         var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         services.AddHttpClient<IAIService, AIService>(client =>
         {
@@ -244,6 +246,14 @@ public static class DependencyInjection
                 client.Timeout = TimeSpan.FromSeconds(120);
             });
         }
+        var billing = configuration.GetSection(BillingOptions.SectionName).Get<BillingOptions>() ?? new BillingOptions();
+        services.AddHttpClient<IPayHereRefundGateway, PayHereRefundGateway>(client =>
+        {
+            client.BaseAddress = new Uri(billing.Sandbox
+                ? "https://sandbox.payhere.lk/merchant/v1/"
+                : "https://www.payhere.lk/merchant/v1/");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddScoped<IAiJobRepository, AiJobRepository>();
         services.AddSingleton<AiWorkerSignal>();
         services.AddScoped<IAiQueueMonitoring, AiQueueMonitoring>();
@@ -271,6 +281,7 @@ public static class DependencyInjection
             .AddScoped<IAdminProfileService, AdminProfileService>()
             .AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>()
             .AddScoped<IProjectInvitationService, ProjectInvitationService>()
+            .AddScoped<IBillingService, BillingService>()
             .AddScoped<ProjectExportService>()
             .AddScoped<IMcpGrantService, McpGrantService>()
             .AddScoped<IExportDiagnosticsService, ExportDiagnosticsService>()

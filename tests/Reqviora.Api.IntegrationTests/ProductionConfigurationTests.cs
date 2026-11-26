@@ -129,6 +129,45 @@ public sealed class ProductionConfigurationTests
         ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
     }
 
+    [Fact]
+    public void Enabled_billing_requires_approved_price_secure_urls_and_merchant_secrets()
+    {
+        var values = Values();
+        values["Billing:Enabled"] = "true";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["Billing:MerchantId"] = "from-secret-store";
+        values["Billing:MerchantSecret"] = "from-secret-store";
+        values["Billing:DefaultProjectPriceUsdMinor"] = "12500";
+        values["Billing:ReturnUrl"] = "https://app.example.test/payment/return";
+        values["Billing:CancelUrl"] = "https://app.example.test/payment/cancel";
+        values["Billing:NotifyUrl"] = "https://api.example.test/api/billing/payhere/notify";
+        values["Billing:CheckoutExpiryMinutes"] = "30";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Fact]
+    public void Automated_refunds_require_separate_merchant_api_credentials()
+    {
+        var values = Values();
+        values["Billing:Enabled"] = "true";
+        values["Billing:MerchantId"] = "from-secret-store";
+        values["Billing:MerchantSecret"] = "from-secret-store";
+        values["Billing:DefaultProjectPriceUsdMinor"] = "12500";
+        values["Billing:ReturnUrl"] = "https://app.example.test/payment/return";
+        values["Billing:CancelUrl"] = "https://app.example.test/payment/cancel";
+        values["Billing:NotifyUrl"] = "https://api.example.test/api/billing/payhere/notify";
+        values["Billing:CheckoutExpiryMinutes"] = "30";
+        values["Billing:RefundsEnabled"] = "true";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["Billing:AppId"] = "from-secret-store";
+        values["Billing:AppSecret"] = "from-secret-store";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
     private static IConfiguration Configuration(Dictionary<string, string?>? values = null) =>
         new ConfigurationBuilder().AddInMemoryCollection(values ?? Values()).Build();
 

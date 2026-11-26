@@ -72,6 +72,11 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `Storage:*` | Documents/exports | Private root, limits, retention, and ClamAV connection |
 | `Security:AdminEmails` | Admin MFA | Accounts blocked from password login until MFA is enrolled, then always challenged |
 | `Invitations:ExpirationHours` | No | Project invitation lifetime; defaults to 72 hours (1–720) |
+| `Billing:Enabled` | No | Defaults to `false`; enable only after merchant approval and price approval |
+| `Billing:MerchantId` / `Billing:MerchantSecret` | When billing is enabled | PayHere checkout credentials supplied through the secret store |
+| `Billing:DefaultProjectPriceUsdMinor` | When billing is enabled | Approved USD price in integer cents; project-specific prices may be set by an administrator |
+| `Billing:ReturnUrl` / `CancelUrl` / `NotifyUrl` | When billing is enabled | HTTPS browser and server callback URLs; only the signed notify callback changes payment state |
+| `Billing:RefundsEnabled` / `AppId` / `AppSecret` | Optional | Separate PayHere Merchant API configuration for administrator refunds |
 
 No passwords, connection credentials, or JWT signing keys should be committed.
 
