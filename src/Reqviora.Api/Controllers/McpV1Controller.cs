@@ -41,6 +41,7 @@ public sealed class McpV1Controller(
         : NotFound();
 
     [HttpPost("tools/call")]
+    [ServiceFilter(typeof(Reqviora.Api.Features.Billing.ProjectPaymentGateFilter))]
     public async Task<IActionResult> Call(
         ToolCallRequest request,
         [FromHeader(Name = "X-MCP-Grant")] string? credential,

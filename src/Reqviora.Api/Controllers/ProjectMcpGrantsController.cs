@@ -16,6 +16,7 @@ public sealed class ProjectMcpGrantsController(IMcpGrantService grants, IConfigu
     public sealed record ProjectRevokeGrantRequest([Required, StringLength(500, MinimumLength = 3)] string Reason);
 
     [HttpPost]
+    [ServiceFilter(typeof(Reqviora.Api.Features.Billing.ProjectPaymentGateFilter))]
     [ProducesResponseType(typeof(McpGrantCreated), StatusCodes.Status201Created)]
     public async Task<ActionResult<McpGrantCreated>> Create(
         Guid projectId,

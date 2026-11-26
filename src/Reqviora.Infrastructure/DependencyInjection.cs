@@ -255,6 +255,12 @@ public static class DependencyInjection
             client.Timeout = TimeSpan.FromSeconds(30);
         });
         services.AddScoped<IAiJobRepository, AiJobRepository>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectCheckoutOrders, Reqviora.Infrastructure.Services.ProjectCheckoutOrders>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IPaymentNotificationService, Reqviora.Infrastructure.Services.PaymentNotificationService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectBillingAccess, Reqviora.Infrastructure.Services.ProjectBillingAccessService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectPaymentHistory, Reqviora.Infrastructure.Services.ProjectPaymentHistoryService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IAdminBillingService, Reqviora.Infrastructure.Services.AdminBillingService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IPaymentRefundService, Reqviora.Infrastructure.Services.PaymentRefundService>();
         services.AddSingleton<AiWorkerSignal>();
         services.AddScoped<IAiQueueMonitoring, AiQueueMonitoring>();
         services.AddScoped<IAIJobQueue, PersistentAiJobService>();
