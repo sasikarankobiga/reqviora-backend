@@ -1,0 +1,677 @@
+{
+  "format": "reqviora.repository-documentation",
+  "schemaVersion": "1.0.0",
+  "projectId": "reqviora",
+  "revisionId": "reqviora-docs-r1",
+  "approvalStatus": "draft",
+  "product": {
+    "name": "REQVIORA",
+    "platform": "web",
+    "scopeStatus": "candidate",
+    "designProfiles": [
+      "web",
+      "mobile",
+      "desktop"
+    ],
+    "previewMode": "simulation"
+  },
+  "sources": [
+    {
+      "id": "BRD",
+      "fileName": "Final BRD.pdf",
+      "revision": "0.5",
+      "date": "2026-11-12",
+      "status": "working-draft"
+    },
+    {
+      "id": "GUIDE",
+      "fileName": "REQVIORA_Detailed_Project_Explanation_For_Humans_and_AI.pdf",
+      "date": "2026-11-17",
+      "status": "explanatory"
+    }
+  ],
+  "implementationEvidence": [
+    {
+      "repository": "sasikarankobiga/reqviora-backend",
+      "branch": "develop",
+      "commit": "61a8b3dc6c487a99201db0192819e6967ea6b127",
+      "observed": [
+        "ASP.NET Core",
+        "EF Core and PostgreSQL",
+        "Authentication and owner-scoped project APIs",
+        "Candidate Blueprint schema and example"
+      ]
+    },
+    {
+      "repository": "sasikarankobiga/reqviora-frontend",
+      "branch": "main",
+      "commit": "f70decfaef23937643885432b28e49dc4ad8f6ea",
+      "observed": [
+        "Flutter Web architecture scaffold",
+        "Router and feature placeholders"
+      ]
+    }
+  ],
+  "builder": {
+    "status": "candidate",
+    "priorStageCount": 7,
+    "stages": [
+      "Identity & Audience",
+      "Features & Screens",
+      "Navigation",
+      "Theme & Brand",
+      "Components & Layout",
+      "Interactions & States",
+      "AI UI Design Workspace",
+      "Review & Export"
+    ],
+    "migrationDecision": "OD-01"
+  },
+  "requirements": [
+    {
+      "id": "FR-001",
+      "statement": "Authenticate accounts and controlled recovery",
+      "modules": [
+        "M01"
+      ],
+      "views": [
+        "UI-01",
+        "UI-03"
+      ],
+      "acceptanceCheck": "Register, sign in and complete a recovery request without exposing account secrets.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-002",
+      "statement": "Create/search/archive/restore/resume projects",
+      "modules": [
+        "M02"
+      ],
+      "views": [
+        "UI-02",
+        "UI-03",
+        "UI-06"
+      ],
+      "acceptanceCheck": "Create two projects, find one, archive and restore it, then resume its saved work.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-003",
+      "statement": "Project-scoped roles and server authorization",
+      "modules": [
+        "M01"
+      ],
+      "views": [
+        "UI-01",
+        "UI-03"
+      ],
+      "acceptanceCheck": "Verify owners and authorized members can access only resources allowed by their grants.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-004",
+      "statement": "Choose separate target UI profiles",
+      "modules": [
+        "M02"
+      ],
+      "views": [
+        "UI-02",
+        "UI-03",
+        "UI-06"
+      ],
+      "acceptanceCheck": "Select multiple design profiles and reopen the project with the same selections.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-005",
+      "statement": "Manual builder without AI dependency",
+      "modules": [
+        "M02",
+        "M05"
+      ],
+      "views": [
+        "UI-02",
+        "UI-03",
+        "UI-06"
+      ],
+      "acceptanceCheck": "Decline AI and complete the manually guided authoring workflow.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-006",
+      "statement": "Version-safe draft saves and recovery",
+      "modules": [
+        "M02"
+      ],
+      "views": [
+        "UI-02",
+        "UI-03",
+        "UI-06"
+      ],
+      "acceptanceCheck": "Save from two sessions and recover the stale client's edits after the conflict.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-007",
+      "statement": "Upload multiple permitted project files",
+      "modules": [
+        "M03"
+      ],
+      "views": [
+        "UI-04"
+      ],
+      "acceptanceCheck": "Upload multiple supported file types and receive a clear rejection for unsupported input.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-008",
+      "statement": "Parse with source/segment anchors",
+      "modules": [
+        "M03"
+      ],
+      "views": [
+        "UI-04"
+      ],
+      "acceptanceCheck": "Open a parsed claim and resolve its available page or text-segment anchor.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-009",
+      "statement": "Consented Tamil/English transcription and edits",
+      "modules": [
+        "M03"
+      ],
+      "views": [
+        "UI-04"
+      ],
+      "acceptanceCheck": "Record with consent in Tamil and English, correct the transcript and retain its provenance.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-010",
+      "statement": "Freeform idea input",
+      "modules": [
+        "M03"
+      ],
+      "views": [
+        "UI-04"
+      ],
+      "acceptanceCheck": "Save typed input as a distinct source that can support a claim.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-011",
+      "statement": "Merge inputs without losing provenance",
+      "modules": [
+        "M03"
+      ],
+      "views": [
+        "UI-04"
+      ],
+      "acceptanceCheck": "Analyze conflicting sources and retain both anchors in the review flow.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-012",
+      "statement": "Extract goals, roles, features, journeys, screens",
+      "modules": [
+        "M04"
+      ],
+      "views": [
+        "UI-05"
+      ],
+      "acceptanceCheck": "Queue analysis and review suggested goals, roles, features, journeys and screens.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-013",
+      "statement": "Preserve suggested/confirmed/unresolved/excluded",
+      "modules": [
+        "M04"
+      ],
+      "views": [
+        "UI-05"
+      ],
+      "acceptanceCheck": "Confirm, defer and reject separate claims and verify their persisted statuses.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-014",
+      "statement": "Ask/answer clarification questions",
+      "modules": [
+        "M04"
+      ],
+      "views": [
+        "UI-05"
+      ],
+      "acceptanceCheck": "Answer a clarification and inspect the impacted requirements.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-015",
+      "statement": "AI gateway with quotas and rate limits",
+      "modules": [
+        "M04"
+      ],
+      "views": [
+        "UI-05"
+      ],
+      "acceptanceCheck": "Hit the configured quota and verify metering, clear failure and manual continuation.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-016",
+      "statement": "Feature priority, rules, acceptance intent",
+      "modules": [
+        "M06"
+      ],
+      "views": [
+        "UI-07"
+      ],
+      "acceptanceCheck": "Persist feature priority, business rule references and acceptance intent.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-017",
+      "statement": "Category default screens with rationale",
+      "modules": [
+        "M06"
+      ],
+      "views": [
+        "UI-07"
+      ],
+      "acceptanceCheck": "Review category defaults with a reason for each suggestion.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-018",
+      "statement": "Select/dismiss suggested or custom screens",
+      "modules": [
+        "M06"
+      ],
+      "views": [
+        "UI-07"
+      ],
+      "acceptanceCheck": "Select, dismiss and add screens, then verify the saved selection.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-019",
+      "statement": "Per-screen roles, purpose, actions, states",
+      "modules": [
+        "M06"
+      ],
+      "views": [
+        "UI-07"
+      ],
+      "acceptanceCheck": "Inspect each selected screen's purpose, allowed roles, actions and states.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-020",
+      "statement": "Trace goals → features → screens → actions",
+      "modules": [
+        "M06"
+      ],
+      "views": [
+        "UI-07"
+      ],
+      "acceptanceCheck": "Follow a goal through its selected feature to its screen and action.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-021",
+      "statement": "Edit navigation routes, graph and conditions",
+      "modules": [
+        "M07"
+      ],
+      "views": [
+        "UI-08"
+      ],
+      "acceptanceCheck": "Edit route triggers, guards and destinations independently of node position.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-022",
+      "statement": "Check route reachability/change impact",
+      "modules": [
+        "M07"
+      ],
+      "views": [
+        "UI-08"
+      ],
+      "acceptanceCheck": "Remove a destination and surface affected paths and unreachable selections.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-023",
+      "statement": "Design tokens and responsive rules",
+      "modules": [
+        "M08"
+      ],
+      "views": [
+        "UI-06",
+        "UI-09"
+      ],
+      "acceptanceCheck": "Change a shared token and verify updates in saved profile previews.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-024",
+      "statement": "Supported component instances and variants",
+      "modules": [
+        "M08"
+      ],
+      "views": [
+        "UI-06",
+        "UI-09"
+      ],
+      "acceptanceCheck": "Render supported props and variants and report unsupported components.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-025",
+      "statement": "Interaction, validation, permission and error states",
+      "modules": [
+        "M08"
+      ],
+      "views": [
+        "UI-06",
+        "UI-09"
+      ],
+      "acceptanceCheck": "Exercise required, denied and error cases with a defined recovery action.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-026",
+      "statement": "Compile schema-valid UI Configuration JSON",
+      "modules": [
+        "M09"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Compile a saved project to Blueprint JSON and validate against its matching schema.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-027",
+      "statement": "Local starter UI fallback",
+      "modules": [
+        "M09"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Disable the AI provider and generate a labeled, supported local starter.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-028",
+      "statement": "Safe authorized AI screen generation",
+      "modules": [
+        "M09"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Generate a schema-valid design through the authorized server job with provenance.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-029",
+      "statement": "Render allowlisted components",
+      "modules": [
+        "M09"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Render registered types and surface unsupported entries without arbitrary execution.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-030",
+      "statement": "Visual property/layout/action editing",
+      "modules": [
+        "M10"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Edit a supported property, layout and action, save and reopen.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-031",
+      "statement": "Supported animation/motion editing",
+      "modules": [
+        "M10"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Change a supported transition and verify reduced-motion behavior.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-032",
+      "statement": "Design edit history and regeneration safeguards",
+      "modules": [
+        "M10"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Undo or restore an edit and preview impact before regenerating.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-033",
+      "statement": "Design/Test mode and viewport preview",
+      "modules": [
+        "M11"
+      ],
+      "views": [
+        "UI-10"
+      ],
+      "acceptanceCheck": "Switch Design/Test and inspect the same journey in configured preview profiles.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-034",
+      "statement": "Mock-only behavior in preview",
+      "modules": [
+        "M11"
+      ],
+      "views": [
+        "UI-10"
+      ],
+      "acceptanceCheck": "Perform mock booking or checkout and verify only simulated state changes.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-035",
+      "statement": "Flag editor-to-requirement impact",
+      "modules": [
+        "M10"
+      ],
+      "views": [
+        "UI-09"
+      ],
+      "acceptanceCheck": "Remove a traced action and identify the impacted requirement before sign-off.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-036",
+      "statement": "Deterministic blockers/advisories",
+      "modules": [
+        "M12"
+      ],
+      "views": [
+        "UI-11"
+      ],
+      "acceptanceCheck": "Run validation twice against the same snapshot and compare rule IDs and severities.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-037",
+      "statement": "Explicit approval of saved draft",
+      "modules": [
+        "M12"
+      ],
+      "views": [
+        "UI-11"
+      ],
+      "acceptanceCheck": "Deny approval on stale or blocked drafts and accept an authorized valid version.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-038",
+      "statement": "Compare/export immutable revisions",
+      "modules": [
+        "M12"
+      ],
+      "views": [
+        "UI-11"
+      ],
+      "acceptanceCheck": "Compare revisions and verify a later draft edit leaves an older export stable.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-039",
+      "statement": "Canonical 19-reference Second Brain + manifest",
+      "modules": [
+        "M13"
+      ],
+      "views": [
+        "UI-11",
+        "UI-12"
+      ],
+      "acceptanceCheck": "Build the canonical 19-file inventory with a separate revision-bound manifest.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-040",
+      "statement": "Markdown/JSON/ZIP versioned export",
+      "modules": [
+        "M13"
+      ],
+      "views": [
+        "UI-11",
+        "UI-12"
+      ],
+      "acceptanceCheck": "Verify Markdown and JSON references and read a ZIP bound to one labeled snapshot.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-041",
+      "statement": "Optional final design preview package",
+      "modules": [
+        "M11",
+        "M13"
+      ],
+      "views": [
+        "UI-10",
+        "UI-11",
+        "UI-12"
+      ],
+      "acceptanceCheck": "When enabled by policy, retrieve the authorized design supplement for its revision.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-042",
+      "statement": "Revocable project/revision read-only MCP",
+      "modules": [
+        "M14"
+      ],
+      "views": [
+        "UI-13"
+      ],
+      "acceptanceCheck": "Read only granted context, revoke access and deny reads after revocation and all writes.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-043",
+      "statement": "Audit access, approval, export and AI usage",
+      "modules": [
+        "M14"
+      ],
+      "views": [
+        "UI-13"
+      ],
+      "acceptanceCheck": "Inspect attributed audit records for access, approval, export and AI usage.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-044",
+      "statement": "Privacy/retention/provider disclosures",
+      "modules": [
+        "M03",
+        "M14"
+      ],
+      "views": [
+        "UI-04",
+        "UI-13"
+      ],
+      "acceptanceCheck": "Check disclosures/consent and exercise approved retention and deletion workflows.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-045",
+      "statement": "Accessible responsive web authoring",
+      "modules": [
+        "M01",
+        "M14"
+      ],
+      "views": [
+        "UI-01",
+        "UI-03",
+        "UI-13"
+      ],
+      "acceptanceCheck": "Complete the core journey with keyboard, meaningful focus and supported sizes.",
+      "source": "BRD Appendix B"
+    },
+    {
+      "id": "FR-046",
+      "statement": "Safe 7-stage to 8-stage data migration",
+      "modules": [
+        "M05"
+      ],
+      "views": [
+        "UI-06"
+      ],
+      "acceptanceCheck": "Preview and migrate a legacy draft while retaining its previous review data.",
+      "source": "BRD Appendix B"
+    }
+  ],
+  "businessRuleIds": [
+    "BRULE-01",
+    "BRULE-02",
+    "BRULE-03",
+    "BRULE-04",
+    "BRULE-05",
+    "BRULE-06",
+    "BRULE-07",
+    "BRULE-08",
+    "BRULE-09",
+    "BRULE-10",
+    "BRULE-11",
+    "BRULE-12"
+  ],
+  "openDecisionIds": [
+    "OD-01",
+    "OD-02",
+    "OD-03",
+    "OD-04",
+    "OD-05",
+    "OD-06",
+    "OD-07",
+    "OD-08",
+    "OD-09"
+  ],
+  "examples": {
+    "teaching": "School Library App",
+    "firstDeliveryMilestone": "Coffee Shop"
+  }
+}
