@@ -15,6 +15,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<Feature> Features => Set<Feature>();
     public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectPaymentOrder> ProjectPaymentOrders => Set<ProjectPaymentOrder>();
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
     public DbSet<ProjectDocumentSegment> ProjectDocumentSegments => Set<ProjectDocumentSegment>();
     public DbSet<Requirement> Requirements => Set<Requirement>();
@@ -58,6 +59,7 @@ public class ReqvioraDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
         DraftPersistenceConfiguration.Configure(modelBuilder, Database.IsSqlServer());
+        BillingPersistenceConfiguration.Configure(modelBuilder, Database.IsSqlServer());
         modelBuilder.Entity<PlatformSettingRevision>(entity =>
         {
             entity.HasKey(x => new { x.Key, x.Revision });
