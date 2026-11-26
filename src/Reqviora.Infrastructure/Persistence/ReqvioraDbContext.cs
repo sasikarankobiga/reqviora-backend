@@ -55,6 +55,12 @@ public class ReqvioraDbContext : DbContext
     public DbSet<McpAccessGrant> McpAccessGrants => Set<McpAccessGrant>();
     public DbSet<SupportIncident> SupportIncidents => Set<SupportIncident>();
     public DbSet<SupportIncidentHistory> SupportIncidentHistory => Set<SupportIncidentHistory>();
+    public DbSet<ProjectPricing> ProjectPricing => Set<ProjectPricing>();
+    public DbSet<PaymentOrder> PaymentOrders => Set<PaymentOrder>();
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+    public DbSet<ProjectEntitlement> ProjectEntitlements => Set<ProjectEntitlement>();
+    public DbSet<PaymentRefund> PaymentRefunds => Set<PaymentRefund>();
+    public DbSet<PaymentAuditRecord> PaymentAuditRecords => Set<PaymentAuditRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -93,6 +99,7 @@ public class ReqvioraDbContext : DbContext
             entity.HasOne<SupportIncident>().WithMany().HasForeignKey(x => x.IncidentId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<User>().WithMany().HasForeignKey(x => x.ChangedBy).OnDelete(DeleteBehavior.NoAction);
         });
+        ConfigureBilling(modelBuilder);
         modelBuilder.Entity<ProjectInvitation>(entity =>
         {
             var statusColumn = Database.IsSqlServer() ? "[Status]" : "\"Status\"";
@@ -302,6 +309,76 @@ public class ReqvioraDbContext : DbContext
                 .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<User>().WithMany().HasForeignKey(grant => grant.RevokedBy)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private void ConfigureBilling(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ProjectPricing>(entity =>
+        {
+            entity.HasIndex(x => new { x.ProjectId, x.IsActive }).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[IsActive] = 1" : "\"IsActive\" = TRUE");
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentOrder>(entity =>
+        {
+            entity.HasIndex(x => x.OrderNumber).IsUnique();
+            entity.HasIndex(x => new { x.ProjectId, x.CreatedAt });
+            entity.HasIndex(x => x.ProviderPaymentId).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[ProviderPaymentId] IS NOT NULL" : "\"ProviderPaymentId\" IS NOT NULL");
+            entity.Property(x => x.OrderNumber).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ProviderPaymentId).HasMaxLength(100);
+            entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentTransaction>(entity =>
+        {
+            entity.HasIndex(x => x.EventKey).IsUnique();
+            entity.HasIndex(x => x.ProviderPaymentId);
+            entity.Property(x => x.Provider).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ProviderPaymentId).HasMaxLength(100);
+            entity.Property(x => x.EventKey).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ProviderStatusCode).HasMaxLength(10).IsRequired();
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.Property(x => x.PaymentMethod).HasMaxLength(30);
+            entity.Property(x => x.StatusMessage).HasMaxLength(500);
+            entity.Property(x => x.PayloadSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ProjectEntitlement>(entity =>
+        {
+            entity.HasIndex(x => x.ProjectId).IsUnique();
+            entity.HasIndex(x => x.PaymentOrderId).IsUnique();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentRefund>(entity =>
+        {
+            entity.HasIndex(x => x.PaymentOrderId).IsUnique();
+            entity.HasIndex(x => x.ProviderRefundId).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[ProviderRefundId] IS NOT NULL" : "\"ProviderRefundId\" IS NOT NULL");
+            entity.Property(x => x.ProviderRefundId).HasMaxLength(100);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(500).IsRequired();
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentAuditRecord>(entity =>
+        {
+            entity.HasIndex(x => new { x.PaymentOrderId, x.OccurredAt });
+            entity.Property(x => x.Action).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Outcome).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Details).HasMaxLength(500);
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.NoAction);
         });
     }
 }
