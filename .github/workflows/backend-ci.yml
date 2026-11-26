@@ -127,7 +127,6 @@ jobs:
         shell: bash
         env:
           POSTGRES_PASSWORD: compose-validation-password
-          JWT_KEY: compose-validation-signing-key-at-least-32-characters
           ACCOUNTLINKS__BASEURL: https://app.example.test
           CORS__ALLOWEDORIGINS__0: https://app.example.test
           SMTP__HOST: smtp.example.test
@@ -139,6 +138,7 @@ jobs:
           certificate="${RUNNER_TEMP}/compose-validation.pfx"
           : > "${certificate}"
           export DATA_PROTECTION_CERTIFICATE_PATH="${certificate}"
+          export JWT_KEY="$(openssl rand -hex 64)"
           docker compose config --quiet
 
   secret-scan:

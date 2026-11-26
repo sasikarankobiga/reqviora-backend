@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -437,6 +438,8 @@ public sealed class McpGrantEndpointsTests
     {
         private readonly SqliteConnection _connection =
             new($"Data Source=admin-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Pooling=False");
+        private readonly string _jwtSigningKey =
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
         public MutableTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
         public User Owner { get; } = User("owner@mcp.test");
         public User OtherUser { get; } = User("user@mcp.test");
@@ -500,7 +503,7 @@ public sealed class McpGrantEndpointsTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("ConnectionStrings:ReqvioraDatabase", "Host=localhost;Database=unused");
-            builder.UseSetting("Jwt:Key", "mcp-test-signing-key-at-least-32-characters");
+            builder.UseSetting("Jwt:Key", _jwtSigningKey);
             builder.UseSetting("Mcp:Enabled", "true");
             builder.UseSetting("AI:Enabled", _aiEnabled.ToString());
             builder.UseSetting("AI:ApiKey", string.Empty);

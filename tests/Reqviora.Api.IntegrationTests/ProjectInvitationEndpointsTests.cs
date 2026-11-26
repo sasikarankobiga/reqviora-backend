@@ -250,6 +250,8 @@ public sealed class ProjectInvitationEndpointsTests
     {
         private readonly SqliteConnection _connection =
             new($"Data Source=invitation-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Pooling=False;Default Timeout=10");
+        private readonly string _jwtSigningKey =
+            Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
         public User Owner { get; } = User("owner@example.test", true);
         public User Recipient { get; } = User("recipient@example.test", true);
@@ -335,7 +337,7 @@ public sealed class ProjectInvitationEndpointsTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("ConnectionStrings:ReqvioraDatabase", "Host=localhost;Database=unused");
-            builder.UseSetting("Jwt:Key", "invitation-test-signing-key-at-least-32-characters");
+            builder.UseSetting("Jwt:Key", _jwtSigningKey);
             builder.UseSetting("AccountLinks:BaseUrl", "https://app.example.test");
             builder.UseSetting("Invitations:ExpirationHours", "1");
             builder.UseSetting("Security:AuditEnabled", "false");

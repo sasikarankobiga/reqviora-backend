@@ -1,0 +1,14 @@
+# generic-api-key; CI-only Compose validation fixture; removed from current workflow.
+9550ed9fcb92c2fdaa6048ef649533f495571d30:.github/workflows/backend-ci.yml:generic-api-key:130
+
+# generic-api-key; project-invitation integration-test signing fixture; removed from current test source.
+3266bedbad85d3a6dad3dab9cd7b844f13b8db6f:tests/Reqviora.Api.IntegrationTests/ProjectInvitationEndpointsTests.cs:generic-api-key:338
+
+# generic-api-key; MCP integration-test signing fixture; removed from current test source.
+6c5d79be13929eea9c471c32b48064076d7dbba1:tests/Reqviora.Api.IntegrationTests/McpGrantEndpointsTests.cs:generic-api-key:503
+
+# generic-api-key; requirement-review integration-test signing fixture; removed from current test source.
+f4c7ea86bb4ac3f3bc67f61020a546b1095940aa:tests/Reqviora.Api.IntegrationTests/RequirementReviewsTests.cs:generic-api-key:122
+
+# generic-api-key; JWT unit-test signing fixture; removed from current test source.
+f08613dd7c8a09dc5af4dc1d929e6d09161b9d1a:tests/Reqviora.Application.Tests/Authentication/JwtTokenServiceTests.cs:generic-api-key:15
