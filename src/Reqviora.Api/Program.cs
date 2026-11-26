@@ -15,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 ProductionConfigurationValidator.Validate(builder.Configuration, builder.Environment);
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<Reqviora.Api.Features.Billing.ProjectPaymentGateFilter>();
 builder.Services.AddProblemDetails();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {

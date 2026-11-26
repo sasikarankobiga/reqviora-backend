@@ -247,6 +247,7 @@ public static class DependencyInjection
         services.AddScoped<IAiJobRepository, AiJobRepository>();
         services.AddScoped<Reqviora.Application.Features.Billing.IProjectCheckoutOrders, Reqviora.Infrastructure.Services.ProjectCheckoutOrders>();
         services.AddScoped<Reqviora.Application.Features.Billing.IPaymentNotificationService, Reqviora.Infrastructure.Services.PaymentNotificationService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectBillingAccess, Reqviora.Infrastructure.Services.ProjectBillingAccessService>();
         services.AddSingleton<AiWorkerSignal>();
         services.AddScoped<IAiQueueMonitoring, AiQueueMonitoring>();
         services.AddScoped<IAIJobQueue, PersistentAiJobService>();

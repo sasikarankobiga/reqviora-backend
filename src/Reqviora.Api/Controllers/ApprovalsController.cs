@@ -13,6 +13,7 @@ namespace Reqviora.Api.Controllers;
 public sealed class ApprovalsController(ReqvioraDbContext db, ProjectDraftService drafts) : ControllerBase
 {
     [HttpPost]
+    [ServiceFilter(typeof(Reqviora.Api.Features.Billing.ProjectPaymentGateFilter))]
     [ProducesResponseType<ApprovalResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<ApprovalResponse>> Approve(
         Guid projectId,
