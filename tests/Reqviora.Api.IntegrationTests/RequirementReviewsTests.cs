@@ -133,7 +133,8 @@ public sealed class RequirementReviewsTests : IDisposable
 
     private sealed class ReviewApiFactory : WebApplicationFactory<Program>
     {
-        private readonly SqliteConnection _connection = new("Data Source=:memory:");
+        private readonly SqliteConnection _connection =
+            new($"Data Source=review-{Guid.NewGuid():N};Mode=Memory;Cache=Shared;Pooling=False");
         public Guid ProjectId { get; } = Guid.NewGuid();
         public User Owner { get; } = new()
         {
@@ -168,10 +169,11 @@ public sealed class RequirementReviewsTests : IDisposable
             builder.UseSetting("Security:AuditEnabled", "false");
             builder.ConfigureTestServices(services =>
             {
+                services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
                 services.RemoveAll<DbContextOptions<ReqvioraDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<ReqvioraDbContext>>();
                 services.RemoveAll<ReqvioraDbContext>();
-                services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection));
+                services.AddDbContext<ReqvioraDbContext>(options => options.UseSqlite(_connection.ConnectionString));
                 services.RemoveAll<IRequirementReviewAccessPolicy>();
                 services.RemoveAll<IRequirementReviewStore>();
                 services.AddSingleton<IRequirementReviewAccessPolicy>(new ProjectAccess(ProjectId, Owner.Id));

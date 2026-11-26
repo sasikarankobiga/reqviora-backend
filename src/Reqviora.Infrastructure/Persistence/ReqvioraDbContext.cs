@@ -43,14 +43,52 @@ public class ReqvioraDbContext : DbContext
     public DbSet<ScreenAction> ScreenActions => Set<ScreenAction>();
     public DbSet<NavigationEdge> NavigationEdges => Set<NavigationEdge>();
     public DbSet<ValidationRun> ValidationRuns => Set<ValidationRun>();
+    public DbSet<ValidationTelemetry> ValidationTelemetry => Set<ValidationTelemetry>();
+    public DbSet<PlatformSettingRevision> PlatformSettingRevisions => Set<PlatformSettingRevision>();
     public DbSet<ValidationFinding> ValidationFindings => Set<ValidationFinding>();
     public DbSet<ApprovedRevision> ApprovedRevisions => Set<ApprovedRevision>();
     public DbSet<ExportRecord> ExportRecords => Set<ExportRecord>();
+    public DbSet<ExportJobDiagnostic> ExportJobDiagnostics => Set<ExportJobDiagnostic>();
+    public DbSet<McpAccessGrant> McpAccessGrants => Set<McpAccessGrant>();
+    public DbSet<SupportIncident> SupportIncidents => Set<SupportIncident>();
+    public DbSet<SupportIncidentHistory> SupportIncidentHistory => Set<SupportIncidentHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         DraftPersistenceConfiguration.Configure(modelBuilder, Database.IsSqlServer());
+        modelBuilder.Entity<PlatformSettingRevision>(entity =>
+        {
+            entity.HasKey(x => new { x.Key, x.Revision });
+            entity.Property(x => x.Key).HasMaxLength(80);
+            entity.Property(x => x.Reason).HasMaxLength(500);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ChangedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<SupportIncident>(entity =>
+        {
+            entity.HasIndex(x => x.Reference).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.Priority, x.UpdatedAtUnixTimeMilliseconds });
+            entity.HasIndex(x => x.AssignedAdminId);
+            entity.Property(x => x.Reference).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Category).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Priority).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.CorrelationId).HasMaxLength(100);
+            entity.Property(x => x.ResolutionNotes).HasMaxLength(1000);
+            entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ReporterId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.AssignedAdminId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<SupportIncidentHistory>(entity =>
+        {
+            entity.HasIndex(x => new { x.IncidentId, x.ChangedAtUnixTimeMilliseconds });
+            entity.Property(x => x.Action).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.PreviousValue).HasMaxLength(100);
+            entity.Property(x => x.NewValue).HasMaxLength(100);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<SupportIncident>().WithMany().HasForeignKey(x => x.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ChangedBy).OnDelete(DeleteBehavior.NoAction);
+        });
 
         modelBuilder.Entity<User>(entity =>
         {
@@ -208,6 +246,25 @@ public class ReqvioraDbContext : DbContext
             entity.Property(segment => segment.Text).IsRequired();
             entity.HasOne<VoiceTranscript>().WithMany().HasForeignKey(segment => segment.VoiceTranscriptId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<McpAccessGrant>(entity =>
+        {
+            entity.HasIndex(grant => grant.SecretHash).IsUnique();
+            entity.HasIndex(grant => new { grant.ProjectId, grant.CreatedAt });
+            entity.HasIndex(grant => new { grant.RevokedAt, grant.ExpiresAt });
+            entity.Property(grant => grant.SecretHash).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(grant => grant.RevocationReason).HasMaxLength(500);
+            entity.Property(grant => grant.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(grant => grant.ProjectId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ApprovedRevision>().WithMany()
+                .HasForeignKey(grant => new { grant.ApprovedRevisionId, grant.ProjectId })
+                .HasPrincipalKey(revision => new { revision.Id, revision.ProjectId })
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(grant => grant.OwnerId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(grant => grant.RevokedBy)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

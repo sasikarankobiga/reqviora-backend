@@ -130,6 +130,8 @@ Swagger is available at `/swagger` in Development. Apply the EF migrations and t
 
 Administrator Web uses the role-protected `/api/admin` surface documented in `admin-integration.md`. Account disable and role changes revoke existing sessions. These routes are not available to ordinary project owners, editors or viewers.
 
+Administrator profile screens use `/api/admin/profile`, `/security`, `/sessions`, and `/login-history`. A profile update may send only `displayName`. Session responses contain IDs and lifecycle timestamps only; they never contain access tokens, refresh tokens, hashes, password data, MFA secrets, or recovery codes. After deleting a session, treat a `401` from that session as final and return it to sign-in. Password change, email change, MFA and logout remain on the existing `/api/account-security` and `/api/auth` routes.
+
 ## Input intelligence and feature-gated MCP V1 scope
 
 | Method | Path | Purpose |
@@ -139,8 +141,11 @@ Administrator Web uses the role-protected `/api/admin` surface documented in `ad
 | GET | `/api/mcp/v1/catalog` | Feature-gated read-only tools, resources and prompt catalog |
 | POST | `/api/mcp/v1/tools/call` | Invoke an allow-listed owner-scoped read-only tool |
 | GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
+| POST | `/api/projects/{projectId}/mcp/grants` | Owner creates a grant bound to an approved revision; raw credential is returned once |
+| GET | `/api/projects/{projectId}/mcp/grants` | Owner lists metadata for their project's grants |
+| POST | `/api/projects/{projectId}/mcp/grants/{grantId}/revoke` | Owner revokes a project grant with a reason |
 
-Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool.
+Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool. Tool calls also require the one-time-issued credential in `X-MCP-Grant`; the grant must match the authenticated owner and requested project and must remain unexpired and unrevoked. Store that credential in an approved client secret store because it cannot be retrieved again.
 ## Private document downloads
 
 `GET /api/projects/{projectId}/documents/{documentId}/download` always requires an authenticated project reader. With local storage it streams the file through the backend. With the Supabase private-storage provider it returns `{ "url": "https://...", "expiresAt": "..." }`; the URL is short-lived and must not be persisted or shared. Storage object paths and the backend service key are never returned to Flutter or Admin Web clients.

@@ -15,6 +15,12 @@ using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.VoiceProcessing;
 using Reqviora.Application.Features.DocumentIntelligence;
+using Reqviora.Application.Features.Mcp;
+using Reqviora.Application.Features.Exports;
+using Reqviora.Application.Features.Validation;
+using Reqviora.Application.Features.PlatformSettings;
+using Reqviora.Application.Features.Incidents;
+using Reqviora.Application.Features.AdminProfile;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -128,6 +134,27 @@ public static class DependencyInjection
                             return;
                         }
 
+                        var sessionClaim = context.Principal?.FindFirstValue(TokenClaimTypes.SessionId);
+                        if (sessionClaim is not null)
+                        {
+                            var sessionNow = context.HttpContext.RequestServices
+                                .GetRequiredService<TimeProvider>().GetUtcNow();
+                            if (!Guid.TryParse(sessionClaim, out var sessionId))
+                            {
+                                context.Fail("The session is no longer valid.");
+                                return;
+                            }
+                            var session = await db.RefreshTokens.AsNoTracking()
+                                .Where(token => token.Id == sessionId && token.UserId == userId)
+                                .Select(token => new { token.RevokedAt, token.ExpiresAt })
+                                .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                            if (session is null || session.RevokedAt is not null || session.ExpiresAt <= sessionNow)
+                            {
+                                context.Fail("The session is no longer valid.");
+                                return;
+                            }
+                        }
+
                         if (context.Principal?.Identity is ClaimsIdentity identity)
                         {
                             if (!string.IsNullOrWhiteSpace(state.RoleName) && !identity.HasClaim(ClaimTypes.Role, state.RoleName))
@@ -215,6 +242,8 @@ public static class DependencyInjection
             });
         }
         services.AddScoped<IAiJobRepository, AiJobRepository>();
+        services.AddSingleton<AiWorkerSignal>();
+        services.AddScoped<IAiQueueMonitoring, AiQueueMonitoring>();
         services.AddScoped<IAIJobQueue, PersistentAiJobService>();
         services.AddHostedService<AiJobWorker>();
         services.AddHostedService<RetentionWorker>();
@@ -232,7 +261,13 @@ public static class DependencyInjection
                 databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)))
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ProjectDraftService>()
+            .AddScoped<IValidationHealth, ValidationHealth>()
+            .AddScoped<IPlatformSettings, PlatformSettingsService>()
+            .AddScoped<IIncidentManagement, IncidentManagementService>()
+            .AddScoped<IAdminProfileService, AdminProfileService>()
             .AddScoped<ProjectExportService>()
+            .AddScoped<IMcpGrantService, McpGrantService>()
+            .AddScoped<IExportDiagnosticsService, ExportDiagnosticsService>()
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailTransport, SmtpEmailTransport>()
             .AddScoped<IEmailService, EmailService>()

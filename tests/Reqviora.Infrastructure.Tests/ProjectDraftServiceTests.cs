@@ -243,6 +243,25 @@ public sealed class ProjectDraftServiceTests
         Assert.Equal(export.Id, sameExport.Id);
         Assert.Equal(export.ArchiveSha256, sameExport.ArchiveSha256);
         Assert.Equal(1, await db.ExportRecords.CountAsync());
+        Assert.Equal(2, await db.ExportJobDiagnostics.CountAsync(job => job.Status == "Succeeded"));
+        Assert.All(await db.ExportJobDiagnostics.ToArrayAsync(), job =>
+        {
+            Assert.Equal("Verified", job.IntegrityStatus);
+            Assert.NotNull(job.CompletedAt);
+            Assert.True(job.DurationMilliseconds >= 0);
+        });
+
+        var storedExport = await db.ExportRecords.SingleAsync();
+        var corruptedArchive = storedExport.Archive.ToArray();
+        corruptedArchive[0] ^= 0xFF;
+        db.Entry(storedExport).Property(item => item.Archive).CurrentValue = corruptedArchive;
+        await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            exports.GetOrCreateAsync(project.Id, revision.Id, owner.Id));
+        var failedJob = await db.ExportJobDiagnostics.SingleAsync(job => job.Status == "Failed");
+        Assert.Equal("EXPORT_INTEGRITY_FAILED", failedJob.FailureCode);
+        Assert.Equal("Integrity", failedJob.FailureCategory);
+        Assert.Equal("Failed", failedJob.IntegrityStatus);
 
         if (provider != "sqlite")
         {

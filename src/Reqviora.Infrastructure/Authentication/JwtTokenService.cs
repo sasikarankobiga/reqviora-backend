@@ -13,11 +13,15 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider t
 {
     private readonly JwtOptions _options = options.Value;
 
-    public AccessTokenResult CreateAccessToken(User user)
+    public AccessTokenResult CreateAccessToken(User user) => CreateAccessTokenCore(user, null);
+
+    public AccessTokenResult CreateAccessToken(User user, Guid sessionId) => CreateAccessTokenCore(user, sessionId);
+
+    private AccessTokenResult CreateAccessTokenCore(User user, Guid? sessionId)
     {
         var now = timeProvider.GetUtcNow();
         var expiresAt = now.AddMinutes(_options.AccessTokenMinutes);
-        var claims = new[]
+        var claims = new List<Claim>
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
@@ -26,6 +30,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider t
             new Claim(SessionFingerprint.ClaimType, SessionFingerprint.FromUser(user)),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+        if (sessionId.HasValue) claims.Add(new Claim(TokenClaimTypes.SessionId, sessionId.Value.ToString()));
 
         var credentials = new SigningCredentials(
             new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key)),

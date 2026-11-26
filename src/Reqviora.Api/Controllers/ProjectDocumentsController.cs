@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Reqviora.Application.Common.Interfaces;
 using Reqviora.Application.Features.Documents;
 using Reqviora.Application.Features.DocumentIntelligence;
+using Reqviora.Application.Features.PlatformSettings;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Persistence;
 using Reqviora.Api.Features.ProjectWorkflow;
@@ -15,7 +16,8 @@ using Reqviora.Api.Features.ProjectWorkflow;
 namespace Reqviora.Api.Controllers;
 
 [ApiController, Authorize, Route("api/projects/{projectId:guid}/documents")]
-public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorageService storage) : ControllerBase
+public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorageService storage,
+    IPlatformSettings settings) : ControllerBase
 {
     private static readonly IReadOnlyDictionary<string, string> AllowedExtensions =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -216,6 +218,9 @@ public sealed class ProjectDocumentsController(ReqvioraDbContext db, IFileStorag
             file.FileName,
             file.ContentType,
             file.Length));
+        var limit = await settings.GetAsync(IPlatformSettings.DocumentUploadMaxBytes, ct);
+        if (file.Length > limit.Value)
+            return Problem(statusCode: StatusCodes.Status413PayloadTooLarge, title: "The document exceeds the upload limit.");
         if (!AllowedExtensions.TryGetValue(file.ContentType, out var requiredExtension) ||
             !Path.GetExtension(safeName).Equals(requiredExtension, StringComparison.OrdinalIgnoreCase))
         {

@@ -504,6 +504,67 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.ToTable("DraftScreenFeatures");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.ExportJobDiagnostic", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ApprovedRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long?>("DurationMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("ExportRecordId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ExportType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FailureCategory")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IntegrityStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExportRecordId");
+
+                    b.HasIndex("ProjectId", "CreatedAt");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("ExportJobDiagnostics");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.ExportRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -623,6 +684,65 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.ToTable("LoginAudits");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.McpAccessGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ApprovedRevisionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("RevokedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SecretHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("RevokedBy");
+
+                    b.HasIndex("SecretHash")
+                        .IsUnique();
+
+                    b.HasIndex("ApprovedRevisionId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "CreatedAt");
+
+                    b.HasIndex("RevokedAt", "ExpiresAt");
+
+                    b.ToTable("McpAccessGrants");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.NavigationEdge", b =>
                 {
                     b.Property<Guid>("DraftVersionId")
@@ -695,6 +815,42 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("NavigationRoutes");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.PlatformSettingRevision", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ChangedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("PreviousValue")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("RolledBackTo")
+                        .HasColumnType("int");
+
+                    b.Property<long>("Value")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Key", "Revision");
+
+                    b.HasIndex("ChangedBy");
+
+                    b.ToTable("PlatformSettingRevisions");
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.Project", b =>
@@ -1195,6 +1351,132 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.ToTable("ScreenActions");
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.SupportIncident", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedAdminId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("LastModifiedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LastModifiedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("ReporterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ResolutionNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("UpdatedAtUnixTimeMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedAdminId");
+
+                    b.HasIndex("Reference")
+                        .IsUnique();
+
+                    b.HasIndex("ReporterId");
+
+                    b.HasIndex("Status", "Priority", "UpdatedAtUnixTimeMilliseconds");
+
+                    b.ToTable("SupportIncidents");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.SupportIncidentHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<long>("ChangedAtUnixTimeMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("ChangedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("IncidentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PreviousValue")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChangedBy");
+
+                    b.HasIndex("IncidentId", "ChangedAtUnixTimeMilliseconds");
+
+                    b.ToTable("SupportIncidentHistory");
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1321,6 +1603,51 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                     b.HasIndex("DraftVersionId");
 
                     b.ToTable("ValidationRuns");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ValidationTelemetry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("BrokenReferences")
+                        .HasColumnType("int");
+
+                    b.Property<long>("CompletedAtMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DurationMilliseconds")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("NavigationFailures")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OtherFailures")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Passed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SchemaFailures")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UnsupportedComponents")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UtcDay")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Workflow")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UtcDay");
+
+                    b.ToTable("ValidationTelemetry");
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.VoiceTranscript", b =>
@@ -1644,6 +1971,20 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.ExportJobDiagnostic", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.ExportRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ExportRecordId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.ExportRecord", b =>
                 {
                     b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
@@ -1665,6 +2006,33 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.McpAccessGrant", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RevokedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.ApprovedRevision", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovedRevisionId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.NavigationEdge", b =>
@@ -1691,6 +2059,15 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DraftVersionId", "ActionId", "SourceScreenId")
                         .HasPrincipalKey("DraftVersionId", "Id", "ScreenId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.PlatformSettingRevision", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ChangedBy")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });
@@ -1792,6 +2169,35 @@ namespace Reqviora.SqlServer.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("DraftVersionId", "ScreenId")
                         .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.SupportIncident", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("AssignedAdminId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReporterId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.SupportIncidentHistory", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ChangedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.SupportIncident", null)
+                        .WithMany()
+                        .HasForeignKey("IncidentId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
