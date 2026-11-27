@@ -915,6 +915,35 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task Provider_blueprint_failure_does_not_persist_or_replace_the_draft()
+    {
+        using var factory = new WorkflowApiFactory(enableAiForTest: true);
+        using var owner = CreateClient(factory.Owner, factory);
+        var path = $"/api/projects/{factory.Project.Id}";
+        using var created = await owner.PostAsJsonAsync(path + "/requirements/candidates/manual",
+            new { title = "Login", description = "Secure sign in" });
+        var requirement = await created.Content.ReadFromJsonAsync<ReviewedRequirement>();
+        Assert.NotNull(requirement);
+        using var accepted = await owner.PostAsJsonAsync(path + $"/requirements/{requirement.Id}/review",
+            new { expectedRevision = 1, decision = "accept" });
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+        using var draft = await owner.PutAsJsonAsync(path + "/drafts/current",
+            new { draft = new { title = "must-survive-provider-failure" } });
+        var saved = await draft.Content.ReadFromJsonAsync<ProjectDraftResponse>();
+        Assert.NotNull(saved);
+
+        using var generated = await owner.PostAsJsonAsync(path + "/blueprints/generate",
+            new { requirementIds = new[] { requirement.Id }, expectedConcurrencyToken = saved.ConcurrencyToken });
+        Assert.Equal(HttpStatusCode.BadGateway, generated.StatusCode);
+        var current = await owner.GetFromJsonAsync<ProjectDraftResponse>(path + "/drafts/current");
+        Assert.NotNull(current);
+        Assert.Equal(saved.Version, current.Version);
+        Assert.Equal("must-survive-provider-failure", current.Draft.GetProperty("title").GetString());
+        using var blueprint = await owner.GetAsync(path + "/blueprints/current");
+        Assert.Equal(HttpStatusCode.NotFound, blueprint.StatusCode);
+    }
+
+    [Fact]
     public async Task Regeneration_preserves_protected_items_and_persists_only_valid_new_revisions()
     {
         using var owner = CreateClient(_factory.Owner);
@@ -1345,6 +1374,9 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
         {
             public Task<AiProviderResponse> ExecuteAsync(AiProviderRequest request, CancellationToken cancellationToken = default)
             {
+                if (request.Operation == AiOperation.ScreenSuggestion)
+                    return Task.FromResult(new AiProviderResponse(request.RequestId, AiRunStatus.Failed, null,
+                        "TEST_PROVIDER_FAILURE"));
                 Assert.Contains("SRC-INPUT", request.InputText);
                 const string json = """
                     {"contractVersion":"1.0","candidates":[{"id":"REQ-LOGIN","title":"Login","description":"Users need sign in","languageCode":"en","confidence":0.9,"evidence":[{"sourceId":"SRC-INPUT","locator":"line 1","quote":"Users need sign in"}]}]}
