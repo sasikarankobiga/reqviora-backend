@@ -427,6 +427,7 @@ public sealed class AccountSecurityEndpointsTests
     {
         using var adminFactory = new AccountApiFactory(admin: true);
         adminFactory.VerifySeedUser();
+        adminFactory.EnableSeedMfa();
         adminFactory.SeedAdminData();
         using var anonymous = adminFactory.CreateClient();
         using var unauthorized = await anonymous.GetAsync("/api/admin/dashboard");
@@ -437,6 +438,12 @@ public sealed class AccountSecurityEndpointsTests
         using var nonAdmin = nonAdminFactory.AuthenticatedClient();
         using var forbidden = await nonAdmin.GetAsync("/api/admin/dashboard");
         Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        using var noMfaFactory = new AccountApiFactory(admin: true);
+        noMfaFactory.VerifySeedUser();
+        using var noMfaAdmin = noMfaFactory.AuthenticatedClient();
+        using var mfaForbidden = await noMfaAdmin.GetAsync("/api/admin/dashboard");
+        Assert.Equal(HttpStatusCode.Forbidden, mfaForbidden.StatusCode);
 
         using var admin = adminFactory.AuthenticatedClient();
         using var dashboard = await admin.GetAsync("/api/admin/dashboard");
@@ -461,6 +468,7 @@ public sealed class AccountSecurityEndpointsTests
     {
         using var factory = new AccountApiFactory(admin: true);
         factory.VerifySeedUser();
+        factory.EnableSeedMfa();
         var target = factory.AddRegularUserWithRefresh();
         using var targetClient = factory.AuthenticatedClient(target.User);
         using var admin = factory.AuthenticatedClient();
