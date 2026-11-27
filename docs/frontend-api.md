@@ -17,6 +17,9 @@ All project-content endpoints require `Authorization: Bearer <access-token>`. Ow
 | POST | `/api/account-security/email-change/request` | `{ "newEmail" }`; Bearer required | `202` |
 | POST | `/api/account-security/email-change/confirm` | `{ "token" }` | `204` |
 | GET | `/api/users/me` | none | `200 UserProfileDto` |
+| GET | `/api/account-security/sessions` | none; session-bound Bearer required | redacted active-session metadata |
+| DELETE | `/api/account-security/sessions/{sessionId}` | none; Bearer required | `204` for an owned session |
+| POST | `/api/account-security/sessions/revoke-others` | none; session-bound Bearer required | `{ "revoked": number }` |
 | GET/POST | `/api/projects` | `CreateProjectDto` for POST | project list / `201` |
 | GET/PUT | `/api/projects/{projectId}` | `UpdateProjectDto` for PUT | project / `200` |
 | GET | `/api/projects/{projectId}/members` | none | owner/member roster |
