@@ -71,6 +71,12 @@ Swagger is enabled only in the Development environment. The readiness endpoint r
 | `AI:*` | After provider approval | OpenAI-compatible endpoint, model, and secret-backed API key |
 | `Storage:*` | Documents/exports | Private root, limits, retention, and ClamAV connection |
 | `Security:AdminEmails` | Admin MFA | Accounts blocked from password login until MFA is enrolled, then always challenged |
+| `Invitations:ExpirationHours` | No | Project invitation lifetime; defaults to 72 hours (1–720) |
+| `Billing:Enabled` | No | Defaults to `false`; enable only after merchant approval and price approval |
+| `Billing:MerchantId` / `Billing:MerchantSecret` | When billing is enabled | PayHere checkout credentials supplied through the secret store |
+| `Billing:DefaultProjectPriceUsdMinor` | When billing is enabled | Approved USD price in integer cents; project-specific prices may be set by an administrator |
+| `Billing:ReturnUrl` / `CancelUrl` / `NotifyUrl` | When billing is enabled | HTTPS browser and server callback URLs; only the signed notify callback changes payment state |
+| `Billing:RefundsEnabled` / `AppId` / `AppSecret` | Optional | Separate PayHere Merchant API configuration for administrator refunds |
 
 No passwords, connection credentials, or JWT signing keys should be committed.
 
@@ -128,10 +134,17 @@ Email verification, password reset, and email-change tokens are random, stored o
 - `GET /api/projects/{id}` - read an owned or shared project
 - `PUT /api/projects/{id}` - update all nine project fields (owner only)
 - `GET /api/projects/{id}/members` - list the owner and project members
-- `PUT /api/projects/{id}/members/{userId}` - add/update a `Viewer` or `Editor` (owner only)
+- `PUT /api/projects/{id}/members/{userId}` - update an accepted `Viewer` or `Editor` (owner only)
 - `DELETE /api/projects/{id}/members/{userId}` - remove a member (owner only)
+- `POST/GET /api/projects/{id}/invitations` - create/list secure invitations (owner only)
+- `POST /api/projects/{id}/invitations/{invitationId}/revoke` - revoke a pending invitation
+- `POST /api/projects/{id}/invitations/{invitationId}/resend` - invalidate and replace its token
+- `POST /api/project-invitations/accept` - accept as the verified recipient
+- `POST /api/project-invitations/reject` - reject as the verified recipient
 
 All project endpoints require `Authorization: Bearer <access-token>`. Viewers can read shared project content; Editors can also save drafts, validate, review requirements, upload documents, and invoke input intelligence. Approval, export creation, project metadata updates, and member administration remain owner-only. A ready-to-run request collection is available at `docs/api/projects.http`.
+
+First-time membership requires accepted email-bound invitations. Raw tokens are emailed and are never returned by list APIs or stored in plaintext. See [secure project invitations](docs/project-invitations.md).
 
 ### Requirement review
 

@@ -1,4 +1,5 @@
 using System.Data;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -7,13 +8,15 @@ using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Validation;
 using Reqviora.Application.Features.UIGeneration.Blueprint.Models;
 using Reqviora.Application.Features.GuidedBuilder;
+using Reqviora.Application.Features.Validation;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Infrastructure.Services;
 
-public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReviewStore reviews)
+public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReviewStore reviews,
+    IValidationHealth? health = null)
 {
     public Task<ProjectDraft> SaveAsync(
         Guid projectId, Guid actorId, string draftJson, Guid? expectedToken, CancellationToken cancellationToken = default) =>
@@ -95,6 +98,7 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
         var draft = await GetRequiredDraftAsync(projectId, expectedToken, cancellationToken);
         EnsureOpen(draft);
         var version = await GetCurrentVersionAsync(draft, cancellationToken);
+        var started = Stopwatch.GetTimestamp();
         var issues = DraftBlueprint.ValidateStored(version.BlueprintJson).ToList();
         using (var draftDocument = JsonDocument.Parse(version.DraftJson))
         {
@@ -120,7 +124,11 @@ public sealed class ProjectDraftService(ReqvioraDbContext db, IRequirementReview
         run.Findings.AddRange(issues.Select((issue, ordinal) =>
             new ValidationFinding(run.Id, ordinal, issue.Code, issue.Path, issue.Message)));
         db.ValidationRuns.Add(run);
+        var duration = Stopwatch.GetElapsedTime(started);
         await db.SaveChangesAsync(cancellationToken);
+        if (health is not null)
+            await health.RecordAsync(ValidationWorkflow.Blueprint, duration,
+                issues.Select(x => new ValidationSignal(x.Code, x.Path)).ToArray(), cancellationToken);
         return run;
     }
 

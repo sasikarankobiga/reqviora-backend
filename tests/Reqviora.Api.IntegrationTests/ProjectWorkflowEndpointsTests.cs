@@ -126,8 +126,9 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
     }
 
     [Fact]
-    public async Task Owner_can_assign_viewer_and_editor_permissions()
+    public async Task Owner_can_update_an_accepted_members_viewer_and_editor_permissions()
     {
+        _factory.AddAcceptedMember(_factory.OtherUser, "Viewer");
         using var owner = CreateClient(_factory.Owner);
         using var viewer = CreateClient(_factory.OtherUser);
 
@@ -1316,6 +1317,20 @@ public sealed class ProjectWorkflowEndpointsTests : IDisposable
             using var scope = Services.CreateScope();
             return scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>()
                 .AuditEvents.AsNoTracking().ToArray();
+        }
+
+        public void AddAcceptedMember(User user, string role)
+        {
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            db.ProjectMembers.Add(new ProjectMember
+            {
+                ProjectId = Project.Id,
+                UserId = user.Id,
+                Role = role,
+                JoinedAtUtc = DateTime.UtcNow
+            });
+            db.SaveChanges();
         }
 
         private static User NewUser(string email) => new()

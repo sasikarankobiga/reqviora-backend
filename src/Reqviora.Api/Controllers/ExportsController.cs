@@ -10,6 +10,7 @@ namespace Reqviora.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/projects/{projectId:guid}/exports")]
+[ServiceFilter(typeof(Reqviora.Api.Features.Billing.ProjectPaymentGateFilter))]
 public sealed class ExportsController(
     ReqvioraDbContext db,
     ProjectExportService exports) : ControllerBase

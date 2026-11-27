@@ -2,13 +2,17 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Reqviora.Api.Features.ProjectWorkflow;
+using Reqviora.Application.Features.Mcp;
 using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Api.Controllers;
 
 // G0-07 V1 scope: authenticated, read-only project context. Mutating tools stay disabled.
 [ApiController, Authorize, Route("api/mcp/v1")]
-public sealed class McpV1Controller(ReqvioraDbContext db, IConfiguration configuration) : ControllerBase
+public sealed class McpV1Controller(
+    ReqvioraDbContext db,
+    IConfiguration configuration,
+    IMcpGrantService grants) : ControllerBase
 {
     private static readonly object[] Tools =
     [
@@ -37,11 +41,17 @@ public sealed class McpV1Controller(ReqvioraDbContext db, IConfiguration configu
         : NotFound();
 
     [HttpPost("tools/call")]
-    public async Task<IActionResult> Call(ToolCallRequest request, CancellationToken cancellationToken)
+    [ServiceFilter(typeof(Reqviora.Api.Features.Billing.ProjectPaymentGateFilter))]
+    public async Task<IActionResult> Call(
+        ToolCallRequest request,
+        [FromHeader(Name = "X-MCP-Grant")] string? credential,
+        CancellationToken cancellationToken)
     {
         if (!Enabled()) return NotFound();
         var userId = ProjectApiAccess.RequireUserId(User);
         await ProjectApiAccess.RequireReadAsync(db, request.ProjectId, userId, cancellationToken);
+        if (!await grants.ValidateAsync(credential ?? string.Empty, request.ProjectId, userId, cancellationToken))
+            return Problem(title: "A valid active MCP project grant is required.", statusCode: 403);
         var current = await ProjectApiAccess.FindCurrentVersionAsync(db, request.ProjectId, cancellationToken);
         return request.Name switch
         {

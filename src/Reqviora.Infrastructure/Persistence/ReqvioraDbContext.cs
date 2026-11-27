@@ -15,6 +15,8 @@ public class ReqvioraDbContext : DbContext
     public DbSet<Feature> Features => Set<Feature>();
     public DbSet<NavigationRoute> NavigationRoutes => Set<NavigationRoute>();
     public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectPaymentOrder> ProjectPaymentOrders => Set<ProjectPaymentOrder>();
+    public DbSet<PaymentRefundRequest> PaymentRefundRequests => Set<PaymentRefundRequest>();
     public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
     public DbSet<ProjectDocumentSegment> ProjectDocumentSegments => Set<ProjectDocumentSegment>();
     public DbSet<Requirement> Requirements => Set<Requirement>();
@@ -32,6 +34,7 @@ public class ReqvioraDbContext : DbContext
     public DbSet<Workspace> Workspaces => Set<Workspace>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectInvitation> ProjectInvitations => Set<ProjectInvitation>();
     public DbSet<ProjectDraft> ProjectDrafts => Set<ProjectDraft>();
     public DbSet<DesignDraftVersion> DesignDraftVersions => Set<DesignDraftVersion>();
     public DbSet<DraftRequirement> DraftRequirements => Set<DraftRequirement>();
@@ -43,14 +46,93 @@ public class ReqvioraDbContext : DbContext
     public DbSet<ScreenAction> ScreenActions => Set<ScreenAction>();
     public DbSet<NavigationEdge> NavigationEdges => Set<NavigationEdge>();
     public DbSet<ValidationRun> ValidationRuns => Set<ValidationRun>();
+    public DbSet<ValidationTelemetry> ValidationTelemetry => Set<ValidationTelemetry>();
+    public DbSet<PlatformSettingRevision> PlatformSettingRevisions => Set<PlatformSettingRevision>();
     public DbSet<ValidationFinding> ValidationFindings => Set<ValidationFinding>();
     public DbSet<ApprovedRevision> ApprovedRevisions => Set<ApprovedRevision>();
     public DbSet<ExportRecord> ExportRecords => Set<ExportRecord>();
+    public DbSet<ExportJobDiagnostic> ExportJobDiagnostics => Set<ExportJobDiagnostic>();
+    public DbSet<McpAccessGrant> McpAccessGrants => Set<McpAccessGrant>();
+    public DbSet<SupportIncident> SupportIncidents => Set<SupportIncident>();
+    public DbSet<SupportIncidentHistory> SupportIncidentHistory => Set<SupportIncidentHistory>();
+    public DbSet<ProjectPricing> ProjectPricing => Set<ProjectPricing>();
+    public DbSet<PaymentOrder> PaymentOrders => Set<PaymentOrder>();
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+    public DbSet<ProjectEntitlement> ProjectEntitlements => Set<ProjectEntitlement>();
+    public DbSet<PaymentRefund> PaymentRefunds => Set<PaymentRefund>();
+    public DbSet<PaymentAuditRecord> PaymentAuditRecords => Set<PaymentAuditRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         DraftPersistenceConfiguration.Configure(modelBuilder, Database.IsSqlServer());
+        BillingPersistenceConfiguration.Configure(modelBuilder, Database.IsSqlServer());
+        modelBuilder.Entity<PlatformSettingRevision>(entity =>
+        {
+            entity.HasKey(x => new { x.Key, x.Revision });
+            entity.Property(x => x.Key).HasMaxLength(80);
+            entity.Property(x => x.Reason).HasMaxLength(500);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ChangedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<SupportIncident>(entity =>
+        {
+            entity.HasIndex(x => x.Reference).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.Priority, x.UpdatedAtUnixTimeMilliseconds });
+            entity.HasIndex(x => x.AssignedAdminId);
+            entity.Property(x => x.Reference).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Category).HasMaxLength(80).IsRequired();
+            entity.Property(x => x.Priority).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.CorrelationId).HasMaxLength(100);
+            entity.Property(x => x.ResolutionNotes).HasMaxLength(1000);
+            entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ReporterId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.AssignedAdminId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<SupportIncidentHistory>(entity =>
+        {
+            entity.HasIndex(x => new { x.IncidentId, x.ChangedAtUnixTimeMilliseconds });
+            entity.Property(x => x.Action).HasMaxLength(40).IsRequired();
+            entity.Property(x => x.PreviousValue).HasMaxLength(100);
+            entity.Property(x => x.NewValue).HasMaxLength(100);
+            entity.Property(x => x.Notes).HasMaxLength(1000);
+            entity.HasOne<SupportIncident>().WithMany().HasForeignKey(x => x.IncidentId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ChangedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        ConfigureBilling(modelBuilder);
+        modelBuilder.Entity<ProjectInvitation>(entity =>
+        {
+            var statusColumn = Database.IsSqlServer() ? "[Status]" : "\"Status\"";
+            var roleColumn = Database.IsSqlServer() ? "[Role]" : "\"Role\"";
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_ProjectInvitations_Status",
+                    $"{statusColumn} IN ('Pending','Accepted','Rejected','Revoked','Expired')");
+                table.HasCheckConstraint("CK_ProjectInvitations_Role",
+                    $"{roleColumn} IN ('Viewer','Editor')");
+            });
+            entity.HasIndex(x => x.TokenHash).IsUnique();
+            entity.HasIndex(x => x.PendingRecipientKey).IsUnique()
+                .HasFilter(Database.IsSqlServer()
+                    ? "[PendingRecipientKey] IS NOT NULL"
+                    : "\"PendingRecipientKey\" IS NOT NULL");
+            entity.HasIndex(x => new { x.ProjectId, x.CreatedAtUnixTimeMilliseconds });
+            entity.HasIndex(x => new { x.NormalizedRecipientEmail, x.Status });
+            entity.Property(x => x.RecipientEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.NormalizedRecipientEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Role).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.TokenHash).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(x => x.PendingRecipientKey).HasMaxLength(353);
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.AcceptedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RejectedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RevokedBy).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ProjectInvitation>().WithMany().HasForeignKey(x => x.SupersedesInvitationId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
 
         modelBuilder.Entity<User>(entity =>
         {
@@ -208,6 +290,95 @@ public class ReqvioraDbContext : DbContext
             entity.Property(segment => segment.Text).IsRequired();
             entity.HasOne<VoiceTranscript>().WithMany().HasForeignKey(segment => segment.VoiceTranscriptId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<McpAccessGrant>(entity =>
+        {
+            entity.HasIndex(grant => grant.SecretHash).IsUnique();
+            entity.HasIndex(grant => new { grant.ProjectId, grant.CreatedAt });
+            entity.HasIndex(grant => new { grant.RevokedAt, grant.ExpiresAt });
+            entity.Property(grant => grant.SecretHash).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(grant => grant.RevocationReason).HasMaxLength(500);
+            entity.Property(grant => grant.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(grant => grant.ProjectId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ApprovedRevision>().WithMany()
+                .HasForeignKey(grant => new { grant.ApprovedRevisionId, grant.ProjectId })
+                .HasPrincipalKey(revision => new { revision.Id, revision.ProjectId })
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(grant => grant.OwnerId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(grant => grant.RevokedBy)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private void ConfigureBilling(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ProjectPricing>(entity =>
+        {
+            entity.HasIndex(x => new { x.ProjectId, x.IsActive }).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[IsActive] = 1" : "\"IsActive\" = TRUE");
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentOrder>(entity =>
+        {
+            entity.HasIndex(x => x.OrderNumber).IsUnique();
+            entity.HasIndex(x => new { x.ProjectId, x.CreatedAt });
+            entity.HasIndex(x => x.ProviderPaymentId).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[ProviderPaymentId] IS NOT NULL" : "\"ProviderPaymentId\" IS NOT NULL");
+            entity.Property(x => x.OrderNumber).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ProviderPaymentId).HasMaxLength(100);
+            entity.Property(x => x.ConcurrencyToken).IsConcurrencyToken();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentTransaction>(entity =>
+        {
+            entity.HasIndex(x => x.EventKey).IsUnique();
+            entity.HasIndex(x => x.ProviderPaymentId);
+            entity.Property(x => x.Provider).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.ProviderPaymentId).HasMaxLength(100);
+            entity.Property(x => x.EventKey).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.ProviderStatusCode).HasMaxLength(10).IsRequired();
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.Property(x => x.PaymentMethod).HasMaxLength(30);
+            entity.Property(x => x.StatusMessage).HasMaxLength(500);
+            entity.Property(x => x.PayloadSha256).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<ProjectEntitlement>(entity =>
+        {
+            entity.HasIndex(x => x.ProjectId).IsUnique();
+            entity.HasIndex(x => x.PaymentOrderId).IsUnique();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.HasOne<Project>().WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentRefund>(entity =>
+        {
+            entity.HasIndex(x => x.PaymentOrderId).IsUnique();
+            entity.HasIndex(x => x.ProviderRefundId).IsUnique()
+                .HasFilter(Database.IsSqlServer() ? "[ProviderRefundId] IS NOT NULL" : "\"ProviderRefundId\" IS NOT NULL");
+            entity.Property(x => x.ProviderRefundId).HasMaxLength(100);
+            entity.Property(x => x.Currency).HasMaxLength(3).IsUnicode(false).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(20).IsRequired();
+            entity.Property(x => x.Reason).HasMaxLength(500).IsRequired();
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.RequestedBy).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<PaymentAuditRecord>(entity =>
+        {
+            entity.HasIndex(x => new { x.PaymentOrderId, x.OccurredAt });
+            entity.Property(x => x.Action).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Outcome).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Details).HasMaxLength(500);
+            entity.HasOne<PaymentOrder>().WithMany().HasForeignKey(x => x.PaymentOrderId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<User>().WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

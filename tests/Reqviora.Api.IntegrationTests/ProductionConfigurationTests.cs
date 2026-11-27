@@ -32,6 +32,7 @@ public sealed class ProductionConfigurationTests
     [InlineData("AIJobs:MaxAttempts", "0")]
     [InlineData("AIJobs:LeaseSeconds", "10")]
     [InlineData("AIJobs:MaxResultCharacters", "0")]
+    [InlineData("Invitations:ExpirationHours", "0")]
     public void Unsafe_production_configuration_is_rejected(string key, string value)
     {
         var values = Values();
@@ -46,6 +47,37 @@ public sealed class ProductionConfigurationTests
         var values = Values();
         values["AI:Enabled"] = "true";
         values["AI:ApiKey"] = "";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["AI:ApiKey"] = "from-secret-store";
+        values["AI:Endpoint"] = "https://ai.example.test/v1/";
+        values["AI:Model"] = "approved-completion";
+        values["AI:TranscriptionModel"] = "approved-transcription";
+        values["AI:TimeoutSeconds"] = "120";
+        values["AI:MaxAttempts"] = "3";
+        values["AI:BaseRetryMilliseconds"] = "250";
+        values["AI:MaxResponseCharacters"] = "2000000";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Theory]
+    [InlineData("AI:MaxAttempts", "0")]
+    [InlineData("AI:BaseRetryMilliseconds", "0")]
+    [InlineData("AI:MaxResponseCharacters", "999")]
+    public void Enabled_ai_rejects_unsafe_protocol_limits(string key, string value)
+    {
+        var values = Values();
+        values["AI:Enabled"] = "true";
+        values["AI:ApiKey"] = "from-secret-store";
+        values["AI:Endpoint"] = "https://ai.example.test/v1/";
+        values["AI:Model"] = "approved-completion";
+        values["AI:TranscriptionModel"] = "approved-transcription";
+        values["AI:TimeoutSeconds"] = "120";
+        values["AI:MaxAttempts"] = "3";
+        values["AI:BaseRetryMilliseconds"] = "250";
+        values["AI:MaxResponseCharacters"] = "2000000";
+        values[key] = value;
         Assert.Throws<InvalidOperationException>(() =>
             ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
     }
@@ -94,6 +126,45 @@ public sealed class ProductionConfigurationTests
 
         values["ForwardedHeaders:Enabled"] = "true";
         values["ForwardedHeaders:KnownProxies:0"] = "10.0.0.10";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Fact]
+    public void Enabled_billing_requires_approved_price_secure_urls_and_merchant_secrets()
+    {
+        var values = Values();
+        values["Billing:Enabled"] = "true";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["Billing:MerchantId"] = "from-secret-store";
+        values["Billing:MerchantSecret"] = "from-secret-store";
+        values["Billing:DefaultProjectPriceUsdMinor"] = "12500";
+        values["Billing:ReturnUrl"] = "https://app.example.test/payment/return";
+        values["Billing:CancelUrl"] = "https://app.example.test/payment/cancel";
+        values["Billing:NotifyUrl"] = "https://api.example.test/api/billing/payhere/notify";
+        values["Billing:CheckoutExpiryMinutes"] = "30";
+        ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
+    }
+
+    [Fact]
+    public void Automated_refunds_require_separate_merchant_api_credentials()
+    {
+        var values = Values();
+        values["Billing:Enabled"] = "true";
+        values["Billing:MerchantId"] = "from-secret-store";
+        values["Billing:MerchantSecret"] = "from-secret-store";
+        values["Billing:DefaultProjectPriceUsdMinor"] = "12500";
+        values["Billing:ReturnUrl"] = "https://app.example.test/payment/return";
+        values["Billing:CancelUrl"] = "https://app.example.test/payment/cancel";
+        values["Billing:NotifyUrl"] = "https://api.example.test/api/billing/payhere/notify";
+        values["Billing:CheckoutExpiryMinutes"] = "30";
+        values["Billing:RefundsEnabled"] = "true";
+        Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production")));
+
+        values["Billing:AppId"] = "from-secret-store";
+        values["Billing:AppSecret"] = "from-secret-store";
         ProductionConfigurationValidator.Validate(Configuration(values), new EnvironmentStub("Production"));
     }
 

@@ -101,11 +101,12 @@ public sealed class AuthService(
             return Result<AuthResponseDto>.Failure("Administrator sign-in with MFA required.");
 
         var newRefreshToken = tokens.CreateRefreshToken();
+        var newRefreshEntity = ToEntity(existingToken.UserId, newRefreshToken);
         existingToken.RevokedAt = now;
         existingToken.ReplacedByTokenHash = newRefreshToken.TokenHash;
-        await users.AddRefreshTokenAsync(ToEntity(existingToken.UserId, newRefreshToken), cancellationToken);
+        await users.AddRefreshTokenAsync(newRefreshEntity, cancellationToken);
 
-        var accessToken = tokens.CreateAccessToken(existingToken.User);
+        var accessToken = tokens.CreateAccessToken(existingToken.User, newRefreshEntity.Id);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result<AuthResponseDto>.Success(ToResponse(existingToken.User, accessToken, newRefreshToken));
     }
@@ -138,9 +139,10 @@ public sealed class AuthService(
 
     private async Task<AuthResponseDto> CreateSessionAsync(User user, CancellationToken cancellationToken)
     {
-        var accessToken = tokens.CreateAccessToken(user);
         var refreshToken = tokens.CreateRefreshToken();
-        await users.AddRefreshTokenAsync(ToEntity(user.Id, refreshToken), cancellationToken);
+        var refreshEntity = ToEntity(user.Id, refreshToken);
+        await users.AddRefreshTokenAsync(refreshEntity, cancellationToken);
+        var accessToken = tokens.CreateAccessToken(user, refreshEntity.Id);
         return ToResponse(user, accessToken, refreshToken);
     }
 

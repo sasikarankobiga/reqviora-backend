@@ -10,7 +10,8 @@ public sealed class AiJobWorker(
     IServiceScopeFactory scopeFactory,
     IOptions<AiJobOptions> options,
     TimeProvider clock,
-    ILogger<AiJobWorker> logger) : BackgroundService
+    ILogger<AiJobWorker> logger,
+    AiWorkerSignal? signal = null) : BackgroundService
 {
     private readonly string _leaseOwner =
         $"{Environment.MachineName}:{Environment.ProcessId}:{Guid.NewGuid():N}";
@@ -32,6 +33,7 @@ public sealed class AiJobWorker(
             }
             catch (Exception exception)
             {
+                signal?.Record(clock.GetUtcNow(), false);
                 logger.LogError(exception, "The durable AI job worker iteration failed.");
                 await Task.Delay(delay, stoppingToken);
             }
@@ -48,6 +50,7 @@ public sealed class AiJobWorker(
             clock.GetUtcNow(),
             minimumLease,
             stoppingToken);
+        signal?.Record(clock.GetUtcNow(), true);
         if (job is null) return false;
 
         using var execution = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);

@@ -61,6 +61,9 @@ public static class ProductionConfigurationValidator
         foreach (var origin in origins)
             RequireSecureUrl(origin, "Cors:AllowedOrigins");
 
+        Require(configuration.GetValue("Invitations:ExpirationHours", 72) is >= 1 and <= 720,
+            "Invitations:ExpirationHours must be between 1 and 720.");
+
         var forwardedHeaders = configuration.GetValue<bool>("ForwardedHeaders:Enabled");
         var trustedProxies = configuration.GetSection("ForwardedHeaders:KnownProxies").Get<string[]>() ?? [];
         if (forwardedHeaders)
@@ -101,6 +104,17 @@ public static class ProductionConfigurationValidator
             RequireSecureUrl(configuration["AI:Endpoint"], "AI:Endpoint");
             Require(!string.IsNullOrWhiteSpace(configuration["AI:ApiKey"]),
                 "AI:Enabled requires a secret-backed API key after G0-07 approval.");
+            Require(!string.IsNullOrWhiteSpace(configuration["AI:Model"]) &&
+                    !string.IsNullOrWhiteSpace(configuration["AI:TranscriptionModel"]),
+                "AI completion and transcription models are required.");
+            Require(configuration.GetValue<int>("AI:TimeoutSeconds") is >= 10 and <= 600,
+                "AI:TimeoutSeconds must be between 10 and 600.");
+            Require(configuration.GetValue<int>("AI:MaxAttempts") is >= 1 and <= 5,
+                "AI:MaxAttempts must be between 1 and 5.");
+            Require(configuration.GetValue<int>("AI:BaseRetryMilliseconds") is >= 10 and <= 5000,
+                "AI:BaseRetryMilliseconds must be between 10 and 5000.");
+            Require(configuration.GetValue<int>("AI:MaxResponseCharacters") is >= 1000 and <= 4_000_000,
+                "AI:MaxResponseCharacters must be between 1000 and 4000000.");
         }
 
         if (configuration.GetValue<bool>("OCR:Enabled"))
@@ -133,6 +147,24 @@ public static class ProductionConfigurationValidator
             "AIJobs:MaxPromptCharacters must be between 1 and 1000000.");
         Require(configuration.GetValue<int>("AIJobs:MaxResultCharacters") is >= 1 and <= 10_000_000,
             "AIJobs:MaxResultCharacters must be between 1 and 10000000.");
+
+        if (configuration.GetValue<bool>("Billing:Enabled"))
+        {
+            Require(!string.IsNullOrWhiteSpace(configuration["Billing:MerchantId"]) &&
+                    !string.IsNullOrWhiteSpace(configuration["Billing:MerchantSecret"]),
+                "Billing requires secret-backed PayHere merchant credentials.");
+            Require(configuration.GetValue<long>("Billing:DefaultProjectPriceUsdMinor") > 0,
+                "Billing requires an approved positive USD project price.");
+            RequireSecureUrl(configuration["Billing:ReturnUrl"], "Billing:ReturnUrl");
+            RequireSecureUrl(configuration["Billing:CancelUrl"], "Billing:CancelUrl");
+            RequireSecureUrl(configuration["Billing:NotifyUrl"], "Billing:NotifyUrl");
+            Require(configuration.GetValue<int>("Billing:CheckoutExpiryMinutes") is >= 5 and <= 1440,
+                "Billing:CheckoutExpiryMinutes must be between 5 and 1440.");
+            if (configuration.GetValue<bool>("Billing:RefundsEnabled"))
+                Require(!string.IsNullOrWhiteSpace(configuration["Billing:AppId"]) &&
+                        !string.IsNullOrWhiteSpace(configuration["Billing:AppSecret"]),
+                    "Automated refunds require secret-backed PayHere Merchant API credentials.");
+        }
     }
 
     private static void RequireSecureUrl(string? value, string name)

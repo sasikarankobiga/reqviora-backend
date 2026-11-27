@@ -1,16 +1,18 @@
 using System.Text.Json;
+using System.Diagnostics;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Reqviora.Api.Features.ProjectWorkflow;
 using Reqviora.Application.Features.GuidedBuilder;
+using Reqviora.Application.Features.Validation;
 using Reqviora.Domain.Entities;
 using Reqviora.Infrastructure.Services;
 
 namespace Reqviora.Api.Controllers;
 
 [ApiController, Authorize, Route("api/projects/{projectId:guid}/builder")]
-public sealed class GuidedBuilderController(ProjectDraftService drafts) : ControllerBase
+public sealed class GuidedBuilderController(ProjectDraftService drafts, IValidationHealth health) : ControllerBase
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -34,7 +36,10 @@ public sealed class GuidedBuilderController(ProjectDraftService drafts) : Contro
     {
         var draft = await drafts.ResumeAsync(projectId, ProjectApiAccess.RequireUserId(User), ct);
         if (draft is null) return NotFound();
+        var started = Stopwatch.GetTimestamp();
         var findings = GuidedBuilderValidator.Validate(ReadBuilder(draft.DraftJson), requireComplete: true);
+        await health.RecordAsync(ValidationWorkflow.Builder, Stopwatch.GetElapsedTime(started),
+            findings.Select(x => new ValidationSignal(x.Code, x.Path)).ToArray(), ct);
         return Ok(new GuidedBuilderValidationResponse(findings.Count == 0, findings));
     }
 

@@ -20,13 +20,20 @@ All project-content endpoints require `Authorization: Bearer <access-token>`. Ow
 | GET/POST | `/api/projects` | `CreateProjectDto` for POST | project list / `201` |
 | GET/PUT | `/api/projects/{projectId}` | `UpdateProjectDto` for PUT | project / `200` |
 | GET | `/api/projects/{projectId}/members` | none | owner/member roster |
-| PUT | `/api/projects/{projectId}/members/{userId}` | `{ "role": "Viewer" | "Editor" }` | add/update member |
+| PUT | `/api/projects/{projectId}/members/{userId}` | `{ "role": "Viewer" | "Editor" }` | update an accepted member |
 | DELETE | `/api/projects/{projectId}/members/{userId}` | none | `204` |
+| POST/GET | `/api/projects/{projectId}/invitations` | create body: `{ "recipientEmail", "role" }` | `201` / owner-only list |
+| POST | `/api/projects/{projectId}/invitations/{invitationId}/revoke` | none | revoke a pending invitation |
+| POST | `/api/projects/{projectId}/invitations/{invitationId}/resend` | none | replace token and resend email |
+| POST | `/api/project-invitations/accept` | `{ "token" }` | atomically create membership |
+| POST | `/api/project-invitations/reject` | `{ "token" }` | reject without membership |
 | GET | `/api/projects/{projectId}/overview` | none | project workflow counts and current token |
 | GET | `/api/workspaces` | none | owned workspaces |
 | GET | `/api/workspaces/{workspaceId}` | none | owned workspace |
 
 Registration passwords must contain 8–128 characters.
+
+New members must use the verified-email invitation lifecycle; the member `PUT` route no longer grants first-time access. See [secure project invitations](project-invitations.md) for response fields, errors, expiry, token handling, and Flutter examples.
 
 Project create and update use the same nine frontend fields: `name`, `description`, `industry`, `targetAudience`, `projectType`, `primaryPlatform`, `technologyPreferences`, `constraints`, and `integrations`. The owner identity is always taken from the access token and is never writable from the request body.
 
@@ -115,6 +122,28 @@ Review decisions are `accept`, `edit`, `reject`, or `defer` and require `expecte
 
 An approval requires a passing validation run for the exact current draft version. When a `guidedBuilder` is present, all eight steps and their cross-step coverage must also pass before approval. Export generator 1.1 packages 24 manifest-tracked artifacts plus `manifest.json`, including the SRS, requirement traceability matrix, developer handoff, typed design documentation, `universal-blueprint.json`, `asset-manifest.json`, and immutable `project.json`. Export reads verify every file digest, the manifest, and the archive SHA-256 before returning content.
 
+## Billing and PayHere checkout
+
+Billing is disabled by default. The client must never send or calculate the payable amount. Checkout returns a provider-hosted PayHere form action and fields already signed by the backend. A browser return or cancel redirect is informational only; poll the project billing status until the backend has processed a verified PayHere notification.
+
+| Method | Route | Authorization | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/billing/pricing?projectId={projectId}` | Project reader when a project is supplied | Current server-side USD price and gateway availability |
+| POST | `/api/projects/{projectId}/billing/checkout` | Project owner | Create a pending order and provider-hosted checkout fields |
+| GET | `/api/projects/{projectId}/billing/status` | Project reader | Latest payment and entitlement state |
+| GET | `/api/projects/{projectId}/billing/history?page=1&pageSize=50` | Project reader | Paginated order history |
+| GET | `/api/billing/payments/{paymentId}` | Related project reader or administrator | One payment without cardholder data |
+| POST | `/api/billing/payhere/notify` | Anonymous provider callback; signed form data required | Idempotently verify and apply a PayHere event |
+| GET | `/api/admin/billing/payments` | Administrator | Filtered, paginated payment monitoring |
+| GET | `/api/admin/billing/payments/{paymentId}` | Administrator | Payment detail |
+| GET | `/api/admin/billing/summary` | Administrator | Persisted lifecycle counts and successful USD total |
+| PUT | `/api/admin/billing/projects/{projectId}/pricing` | Administrator | Replace the active project USD price using `{ "amountMinor": 12500 }` |
+| POST | `/api/admin/billing/payments/{paymentId}/refund` | Administrator | Request a provider refund using `{ "reason": "..." }` |
+
+Checkout contact fields are `firstName`, `lastName`, `email`, `phone`, `address`, `city`, and `country`. The response contains `paymentId`, `orderId`, `actionUrl`, `fields`, and `expiresAt`; submit `fields` directly to `actionUrl`. Status values are `Pending`, `Processing`, `Succeeded`, `Failed`, `Cancelled`, `Refunded`, or `Disputed`. Entitlement is granted only after a signed success notification and is revoked on a verified chargeback or completed refund. The API never receives or stores card numbers or CVV values.
+
+The frontend develop branch inspected on 26 November 2026 does not yet call these billing routes. It also still calls legacy `/api/projects/{projectId}/workflow-intelligence/*` paths. Current backend workflow routes are the Requirements, Clarifications, Blueprints, Drafts, Guided Builder, and Approval routes documented above; frontend migration or a separately approved compatibility adapter is required before browser E2E can pass.
+
 ## Configuration
 
 - `ConnectionStrings__ReqvioraDatabase`
@@ -130,6 +159,8 @@ Swagger is available at `/swagger` in Development. Apply the EF migrations and t
 
 Administrator Web uses the role-protected `/api/admin` surface documented in `admin-integration.md`. Account disable and role changes revoke existing sessions. These routes are not available to ordinary project owners, editors or viewers.
 
+Administrator profile screens use `/api/admin/profile`, `/security`, `/sessions`, and `/login-history`. A profile update may send only `displayName`. Session responses contain IDs and lifecycle timestamps only; they never contain access tokens, refresh tokens, hashes, password data, MFA secrets, or recovery codes. After deleting a session, treat a `401` from that session as final and return it to sign-in. Password change, email change, MFA and logout remain on the existing `/api/account-security` and `/api/auth` routes.
+
 ## Input intelligence and feature-gated MCP V1 scope
 
 | Method | Path | Purpose |
@@ -139,8 +170,11 @@ Administrator Web uses the role-protected `/api/admin` surface documented in `ad
 | GET | `/api/mcp/v1/catalog` | Feature-gated read-only tools, resources and prompt catalog |
 | POST | `/api/mcp/v1/tools/call` | Invoke an allow-listed owner-scoped read-only tool |
 | GET | `/api/mcp/v1/prompts/{name}` | Read an approved V1 prompt template |
+| POST | `/api/projects/{projectId}/mcp/grants` | Owner creates a grant bound to an approved revision; raw credential is returned once |
+| GET | `/api/projects/{projectId}/mcp/grants` | Owner lists metadata for their project's grants |
+| POST | `/api/projects/{projectId}/mcp/grants/{grantId}/revoke` | Owner revokes a project grant with a reason |
 
-Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool.
+Text extraction and voice transcription validate explicit consent and project authorization before checking provider availability. Input-intelligence and AI-job endpoints return `503` while `AI__Enabled=false`. Keep this default until G0-07 approves a provider, then configure the approved endpoint, models, and secret-backed key before enabling it. Set `Mcp__Enabled=true` only after a separate MCP scope approval. The V1 surface contains no mutating MCP tool. Tool calls also require the one-time-issued credential in `X-MCP-Grant`; the grant must match the authenticated owner and requested project and must remain unexpired and unrevoked. Store that credential in an approved client secret store because it cannot be retrieved again.
 ## Private document downloads
 
 `GET /api/projects/{projectId}/documents/{documentId}/download` always requires an authenticated project reader. With local storage it streams the file through the backend. With the Supabase private-storage provider it returns `{ "url": "https://...", "expiresAt": "..." }`; the URL is short-lived and must not be persisted or shared. Storage object paths and the backend service key are never returned to Flutter or Admin Web clients.

@@ -15,6 +15,15 @@ using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.VoiceProcessing;
 using Reqviora.Application.Features.DocumentIntelligence;
+using Reqviora.Application.Features.Mcp;
+using Reqviora.Application.Features.Exports;
+using Reqviora.Application.Features.Validation;
+using Reqviora.Application.Features.PlatformSettings;
+using Reqviora.Application.Features.Incidents;
+using Reqviora.Application.Features.AdminProfile;
+using Reqviora.Application.Features.Sharing;
+using Reqviora.Application.Features.AdminHealth;
+using Reqviora.Application.Features.Billing;
 using Reqviora.Infrastructure.Authentication;
 using Reqviora.Infrastructure.Authorization;
 using Reqviora.Infrastructure.Persistence;
@@ -128,6 +137,27 @@ public static class DependencyInjection
                             return;
                         }
 
+                        var sessionClaim = context.Principal?.FindFirstValue(TokenClaimTypes.SessionId);
+                        if (sessionClaim is not null)
+                        {
+                            var sessionNow = context.HttpContext.RequestServices
+                                .GetRequiredService<TimeProvider>().GetUtcNow();
+                            if (!Guid.TryParse(sessionClaim, out var sessionId))
+                            {
+                                context.Fail("The session is no longer valid.");
+                                return;
+                            }
+                            var session = await db.RefreshTokens.AsNoTracking()
+                                .Where(token => token.Id == sessionId && token.UserId == userId)
+                                .Select(token => new { token.RevokedAt, token.ExpiresAt })
+                                .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+                            if (session is null || session.RevokedAt is not null || session.ExpiresAt <= sessionNow)
+                            {
+                                context.Fail("The session is no longer valid.");
+                                return;
+                            }
+                        }
+
                         if (context.Principal?.Identity is ClaimsIdentity identity)
                         {
                             if (!string.IsNullOrWhiteSpace(state.RoleName) && !identity.HasClaim(ClaimTypes.Role, state.RoleName))
@@ -186,6 +216,8 @@ public static class DependencyInjection
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
         services.Configure<AiJobOptions>(configuration.GetSection(AiJobOptions.SectionName));
         services.Configure<OcrOptions>(configuration.GetSection(OcrOptions.SectionName));
+        services.Configure<ProjectInvitationOptions>(configuration.GetSection(ProjectInvitationOptions.SectionName));
+        services.Configure<BillingOptions>(configuration.GetSection(BillingOptions.SectionName));
         var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         services.AddHttpClient<IAIService, AIService>(client =>
         {
@@ -214,7 +246,23 @@ public static class DependencyInjection
                 client.Timeout = TimeSpan.FromSeconds(120);
             });
         }
+        var billing = configuration.GetSection(BillingOptions.SectionName).Get<BillingOptions>() ?? new BillingOptions();
+        services.AddHttpClient<IPayHereRefundGateway, PayHereRefundGateway>(client =>
+        {
+            client.BaseAddress = new Uri(billing.Sandbox
+                ? "https://sandbox.payhere.lk/merchant/v1/"
+                : "https://www.payhere.lk/merchant/v1/");
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddScoped<IAiJobRepository, AiJobRepository>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectCheckoutOrders, Reqviora.Infrastructure.Services.ProjectCheckoutOrders>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IPaymentNotificationService, Reqviora.Infrastructure.Services.PaymentNotificationService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectBillingAccess, Reqviora.Infrastructure.Services.ProjectBillingAccessService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IProjectPaymentHistory, Reqviora.Infrastructure.Services.ProjectPaymentHistoryService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IAdminBillingService, Reqviora.Infrastructure.Services.AdminBillingService>();
+        services.AddScoped<Reqviora.Application.Features.Billing.IPaymentRefundService, Reqviora.Infrastructure.Services.PaymentRefundService>();
+        services.AddSingleton<AiWorkerSignal>();
+        services.AddScoped<IAiQueueMonitoring, AiQueueMonitoring>();
         services.AddScoped<IAIJobQueue, PersistentAiJobService>();
         services.AddHostedService<AiJobWorker>();
         services.AddHostedService<RetentionWorker>();
@@ -232,7 +280,17 @@ public static class DependencyInjection
                 databaseProvider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase)))
             .AddScoped<IUnitOfWork, UnitOfWork>()
             .AddScoped<ProjectDraftService>()
+            .AddScoped<IValidationHealth, ValidationHealth>()
+            .AddScoped<IAdminSystemHealth, AdminSystemHealth>()
+            .AddScoped<IPlatformSettings, PlatformSettingsService>()
+            .AddScoped<IIncidentManagement, IncidentManagementService>()
+            .AddScoped<IAdminProfileService, AdminProfileService>()
+            .AddScoped<IProjectInvitationRepository, ProjectInvitationRepository>()
+            .AddScoped<IProjectInvitationService, ProjectInvitationService>()
+            .AddScoped<IBillingService, BillingService>()
             .AddScoped<ProjectExportService>()
+            .AddScoped<IMcpGrantService, McpGrantService>()
+            .AddScoped<IExportDiagnosticsService, ExportDiagnosticsService>()
             .AddScoped<ITokenService, JwtTokenService>()
             .AddScoped<IEmailTransport, SmtpEmailTransport>()
             .AddScoped<IEmailService, EmailService>()

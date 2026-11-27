@@ -15,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 ProductionConfigurationValidator.Validate(builder.Configuration, builder.Environment);
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<Reqviora.Api.Features.Billing.ProjectPaymentGateFilter>();
 builder.Services.AddProblemDetails();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
@@ -46,6 +47,15 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+    options.AddPolicy("invitations", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            Partition(context),
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
