@@ -1,5 +1,9 @@
 # Final backend readiness
 
+## 27 November 2026 reconciliation update
+
+The current readiness branch starts at `a5c5892c0d5c88329f606aebb66dcf01e4a38676` (`origin/develop` after PR #29). The merged PR had duplicate billing contracts and routes, malformed PostgreSQL and SQL Server model snapshots, and invalid JSON configuration. The completion branch resolves those verified defects while retaining the secure `PaymentOrders` lifecycle as the authoritative public billing API. Verification on this branch: Debug and Release builds passed with zero warnings/errors; xUnit passed 314 with 0 failures and 1 native-database skip; six contract suites passed 236 checks; both EF providers report no pending model changes; NuGet audit reports no vulnerable packages. Local Gitleaks, Docker, native database, live-provider, browser E2E, backup/restore, and production checks remain blocked by unavailable tooling/infrastructure and must pass CI/staging before release.
+
 Verified on 26 November 2026 from baseline `72f9ad09c9fca3f35653b9f0c89250f846e3acb9` on `feature/kobiga-final-backend-completion` with .NET SDK 10.0.401. This report records local evidence; it does not claim live provider, production database, container, or browser verification.
 
 ## Completed and preserved

@@ -8,7 +8,7 @@ public sealed class PaymentNotificationService(
     ReqvioraDbContext db,
     TimeProvider clock) : IPaymentNotificationService
 {
-    public async Task<PaymentNotificationResult> ApplyAsync(
+    public async Task<ProjectPaymentNotificationResult> ApplyAsync(
         VerifiedPaymentNotification notification,
         CancellationToken cancellationToken = default)
     {
@@ -18,12 +18,12 @@ public sealed class PaymentNotificationService(
                 cancellationToken);
 
         if (order is null)
-            return PaymentNotificationResult.OrderNotFound;
+            return ProjectPaymentNotificationResult.OrderNotFound;
 
         if (order.Amount != notification.Amount ||
             order.Currency != notification.Currency)
         {
-            return PaymentNotificationResult.PaymentMismatch;
+            return ProjectPaymentNotificationResult.PaymentMismatch;
         }
 
         var referenceUsed = await db.ProjectPaymentOrders
@@ -35,7 +35,7 @@ public sealed class PaymentNotificationService(
                 cancellationToken);
 
         if (referenceUsed)
-            return PaymentNotificationResult.PaymentMismatch;
+            return ProjectPaymentNotificationResult.PaymentMismatch;
 
         bool changed;
 
@@ -51,20 +51,20 @@ public sealed class PaymentNotificationService(
         }
         catch (InvalidOperationException)
         {
-            return PaymentNotificationResult.PaymentMismatch;
+            return ProjectPaymentNotificationResult.PaymentMismatch;
         }
         catch (ArgumentException)
         {
-            return PaymentNotificationResult.PaymentMismatch;
+            return ProjectPaymentNotificationResult.PaymentMismatch;
         }
 
         if (!changed)
-            return PaymentNotificationResult.DuplicateOrStale;
+            return ProjectPaymentNotificationResult.DuplicateOrStale;
 
         try
         {
             await db.SaveChangesAsync(cancellationToken);
-            return PaymentNotificationResult.Applied;
+            return ProjectPaymentNotificationResult.Applied;
         }
         catch (DbUpdateException)
         {
@@ -72,7 +72,7 @@ public sealed class PaymentNotificationService(
             // through another request-scoped component.
             db.Entry(order).State = EntityState.Detached;
 
-            return PaymentNotificationResult.RetryRequired;
+            return ProjectPaymentNotificationResult.RetryRequired;
         }
     }
 }

@@ -72,22 +72,22 @@ public sealed class PaymentNotificationServiceTests
             ProjectPaymentStatus.Succeeded);
 
         Assert.Equal(
-            PaymentNotificationResult.PaymentMismatch,
+            ProjectPaymentNotificationResult.PaymentMismatch,
             await service.ApplyAsync(
                 notification with { Amount = 0.01m }));
 
         Assert.Equal(
-            PaymentNotificationResult.PaymentMismatch,
+            ProjectPaymentNotificationResult.PaymentMismatch,
             await service.ApplyAsync(
                 notification with { Currency = "LKR" }));
 
         Assert.Equal(
-            PaymentNotificationResult.OrderNotFound,
+            ProjectPaymentNotificationResult.OrderNotFound,
             await service.ApplyAsync(
                 notification with { OrderId = Guid.NewGuid() }));
 
         Assert.Equal(
-            PaymentNotificationResult.Applied,
+            ProjectPaymentNotificationResult.Applied,
             await service.ApplyAsync(notification));
 
         db.ChangeTracker.Clear();
@@ -100,18 +100,18 @@ public sealed class PaymentNotificationServiceTests
         var token = stored.ConcurrencyToken;
 
         Assert.Equal(
-            PaymentNotificationResult.DuplicateOrStale,
+            ProjectPaymentNotificationResult.DuplicateOrStale,
             await service.ApplyAsync(notification));
 
         Assert.Equal(token, stored.ConcurrencyToken);
 
         Assert.Equal(
-            PaymentNotificationResult.PaymentMismatch,
+            ProjectPaymentNotificationResult.PaymentMismatch,
             await service.ApplyAsync(
                 notification with { OrderId = another.Id }));
 
         Assert.Equal(
-            PaymentNotificationResult.DuplicateOrStale,
+            ProjectPaymentNotificationResult.DuplicateOrStale,
             await service.ApplyAsync(notification with
             {
                 Status = ProjectPaymentStatus.Failed
@@ -120,7 +120,7 @@ public sealed class PaymentNotificationServiceTests
         Assert.True(stored.IsSettled);
 
         Assert.Equal(
-            PaymentNotificationResult.Applied,
+            ProjectPaymentNotificationResult.Applied,
             await service.ApplyAsync(notification with
             {
                 Status = ProjectPaymentStatus.ChargedBack
@@ -129,7 +129,7 @@ public sealed class PaymentNotificationServiceTests
         Assert.False(stored.IsSettled);
 
         Assert.Equal(
-            PaymentNotificationResult.DuplicateOrStale,
+            ProjectPaymentNotificationResult.DuplicateOrStale,
             await service.ApplyAsync(notification));
 
         db.ChangeTracker.Clear();

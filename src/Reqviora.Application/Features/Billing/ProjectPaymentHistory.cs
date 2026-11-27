@@ -11,7 +11,7 @@ public sealed record PaymentHistoryItem(
     DateTimeOffset UpdatedAt,
     bool ReceiptAvailable);
 
-public sealed record PaymentHistoryPage(
+public sealed record ProjectPaymentHistoryPage(
     int Page,
     int PageSize,
     int Total,
@@ -19,7 +19,7 @@ public sealed record PaymentHistoryPage(
 
 public interface IProjectPaymentHistory
 {
-    Task<PaymentHistoryPage?> ListAsync(
+    Task<ProjectPaymentHistoryPage?> ListAsync(
         Guid projectId,
         Guid actorId,
         int page,
