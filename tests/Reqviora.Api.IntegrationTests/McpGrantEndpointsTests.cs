@@ -625,7 +625,9 @@ public sealed class McpGrantEndpointsTests
             PasswordHash = "not-used",
             DisplayName = email,
             EmailVerified = true,
-            MfaEnabled = mfa
+            MfaEnabled = mfa,
+            // The fixture exercises authorization only and never invokes OTP validation.
+            MfaSecretProtected = mfa ? "fixture-protected-mfa-secret" : null
         };
     }
 
