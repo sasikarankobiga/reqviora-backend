@@ -55,4 +55,14 @@ public interface IMcpGrantService
         Guid projectId,
         Guid ownerId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves an active grant for a project owner without ever returning its credential or hash.
+    /// The returned revision identifier is the immutable boundary for all MCP reads.
+    /// </summary>
+    Task<McpGrantMetadata?> ResolveActiveAsync(
+        string credential,
+        Guid projectId,
+        Guid ownerId,
+        CancellationToken cancellationToken = default);
 }
