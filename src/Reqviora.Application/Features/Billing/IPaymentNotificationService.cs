@@ -9,7 +9,7 @@ public sealed record VerifiedPaymentNotification(
     string Currency,
     ProjectPaymentStatus Status);
 
-public enum PaymentNotificationResult
+public enum ProjectPaymentNotificationResult
 {
     Applied,
     DuplicateOrStale,
@@ -20,7 +20,7 @@ public enum PaymentNotificationResult
 
 public interface IPaymentNotificationService
 {
-    Task<PaymentNotificationResult> ApplyAsync(
+    Task<ProjectPaymentNotificationResult> ApplyAsync(
         VerifiedPaymentNotification notification,
         CancellationToken cancellationToken = default);
 }

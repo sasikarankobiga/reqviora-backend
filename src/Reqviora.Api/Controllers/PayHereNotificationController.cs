@@ -89,19 +89,19 @@ public sealed class PayHereNotificationController(
 
         return result switch
         {
-            PaymentNotificationResult.Applied =>
+            ProjectPaymentNotificationResult.Applied =>
                 Ok(),
 
-            PaymentNotificationResult.DuplicateOrStale =>
+            ProjectPaymentNotificationResult.DuplicateOrStale =>
                 Ok(),
 
-            PaymentNotificationResult.OrderNotFound =>
+            ProjectPaymentNotificationResult.OrderNotFound =>
                 NotFound(),
 
-            PaymentNotificationResult.PaymentMismatch =>
+            ProjectPaymentNotificationResult.PaymentMismatch =>
                 Conflict(),
 
-            PaymentNotificationResult.RetryRequired =>
+            ProjectPaymentNotificationResult.RetryRequired =>
                 StatusCode(503),
 
             _ => StatusCode(500)

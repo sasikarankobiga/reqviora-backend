@@ -802,18 +802,6 @@ namespace Reqviora.Infrastructure.Persistence.Migrations
                     b.ToTable("NavigationRoutes");
                 });
 
-Varmitha
-            modelBuilder.Entity("Reqviora.Domain.Entities.PaymentRefundRequest", b =>
-                {
-                    b.Property<Guid>("PaymentId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("ConcurrencyToken")
-                        .IsConcurrencyToken()
-                        .HasColumnType("uuid");
-
-                    b.Property<string>("Reason")
-
             modelBuilder.Entity("Reqviora.Domain.Entities.PaymentAuditRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -836,22 +824,9 @@ Varmitha
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Outcome")
- develop
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
-
- Varmitha
-                    b.Property<DateTimeOffset>("RequestedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("RequestedBy")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset?>("ReviewedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid?>("ReviewedBy")
 
                     b.Property<Guid?>("PaymentOrderId")
                         .HasColumnType("uuid");
@@ -964,7 +939,6 @@ Varmitha
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("RequestedBy")
-develop
                         .HasColumnType("uuid");
 
                     b.Property<string>("Status")
@@ -972,7 +946,51 @@ develop
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)");
 
- Varmitha
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("ProviderRefundId")
+                        .IsUnique()
+                        .HasFilter("\"ProviderRefundId\" IS NOT NULL");
+
+                    b.HasIndex("RequestedBy");
+
+                    b.ToTable("PaymentRefunds");
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.PaymentRefundRequest", b =>
+                {
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ConcurrencyToken")
+                        .IsConcurrencyToken()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("RequestedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReviewedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.HasKey("PaymentId");
 
                     b.HasIndex("RequestedBy");
@@ -987,19 +1005,6 @@ develop
 
                             t.HasCheckConstraint("CK_RefundRequests_Status", "\"Status\" IN ('requested','reviewed','rejected')");
                         });
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PaymentOrderId")
-                        .IsUnique();
-
-                    b.HasIndex("ProviderRefundId")
-                        .IsUnique()
-                        .HasFilter("\"ProviderRefundId\" IS NOT NULL");
-
-                    b.HasIndex("RequestedBy");
-
-                    b.ToTable("PaymentRefunds");
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.PaymentTransaction", b =>
@@ -1072,7 +1077,6 @@ develop
                     b.HasIndex("ProviderPaymentId");
 
                     b.ToTable("PaymentTransactions");
- develop
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.PlatformSettingRevision", b =>
@@ -1543,17 +1547,12 @@ develop
                         });
                 });
 
- Varmitha
             modelBuilder.Entity("Reqviora.Domain.Entities.ProjectPaymentOrder", b =>
-
-            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectPricing", b =>
- develop
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
- Varmitha
                     b.Property<decimal>("Amount")
                         .HasPrecision(11, 2)
                         .HasColumnType("numeric(11,2)");
@@ -1565,21 +1564,12 @@ develop
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-
-                    b.Property<long>("AmountMinor")
-                        .HasColumnType("bigint");
-
-                    b.Property<Guid>("CreatedBy")
-                        .HasColumnType("uuid");
-
- develop
                     b.Property<string>("Currency")
                         .IsRequired()
                         .HasMaxLength(3)
                         .IsUnicode(false)
                         .HasColumnType("character varying(3)");
 
- Varmitha
                     b.Property<string>("GatewayPaymentId")
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
@@ -1587,20 +1577,9 @@ develop
                     b.Property<Guid>("PayerId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTimeOffset>("EffectiveFrom")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("EffectiveUntil")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
- develop
-
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
- Varmitha
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -1625,6 +1604,37 @@ develop
 
                             t.HasCheckConstraint("CK_ProjectPaymentOrders_Status", "\"Status\" IN (0, 1, 2, 3, 4)");
                         });
+                });
+
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectPricing", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("AmountMinor")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .IsUnicode(false)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<DateTimeOffset>("EffectiveFrom")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("EffectiveUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1635,7 +1645,6 @@ develop
                         .HasFilter("\"IsActive\" = TRUE");
 
                     b.ToTable("ProjectPricing");
- develop
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.RefreshToken", b =>
@@ -2547,13 +2556,6 @@ develop
                         .IsRequired();
                 });
 
-Varmitha
-            modelBuilder.Entity("Reqviora.Domain.Entities.PaymentRefundRequest", b =>
-                {
-                    b.HasOne("Reqviora.Domain.Entities.ProjectPaymentOrder", null)
-                        .WithOne()
-                        .HasForeignKey("Reqviora.Domain.Entities.PaymentRefundRequest", "PaymentId")
-
             modelBuilder.Entity("Reqviora.Domain.Entities.PaymentAuditRecord", b =>
                 {
                     b.HasOne("Reqviora.Domain.Entities.User", null)
@@ -2571,7 +2573,7 @@ Varmitha
                 {
                     b.HasOne("Reqviora.Domain.Entities.Project", null)
                         .WithMany()
- develop
+                        .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
@@ -2580,13 +2582,6 @@ Varmitha
                         .HasForeignKey("RequestedBy")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
- Varmitha
-
-                    b.HasOne("Reqviora.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("ReviewedBy")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.PaymentRefund", b =>
@@ -2604,6 +2599,26 @@ Varmitha
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.PaymentRefundRequest", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.ProjectPaymentOrder", null)
+                        .WithOne()
+                        .HasForeignKey("Reqviora.Domain.Entities.PaymentRefundRequest", "PaymentId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ReviewedBy")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
             modelBuilder.Entity("Reqviora.Domain.Entities.PaymentTransaction", b =>
                 {
                     b.HasOne("Reqviora.Domain.Entities.PaymentOrder", null)
@@ -2611,7 +2626,6 @@ Varmitha
                         .HasForeignKey("PaymentOrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
- develop
                 });
 
             modelBuilder.Entity("Reqviora.Domain.Entities.PlatformSettingRevision", b =>
@@ -2732,30 +2746,33 @@ Varmitha
                         .IsRequired();
                 });
 
- Varmitha
             modelBuilder.Entity("Reqviora.Domain.Entities.ProjectPaymentOrder", b =>
                 {
                     b.HasOne("Reqviora.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("PayerId")
-
-            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectPricing", b =>
-                {
-                    b.HasOne("Reqviora.Domain.Entities.User", null)
-                        .WithMany()
-                        .HasForeignKey("CreatedBy")
-develop
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("Reqviora.Domain.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
- Varmitha
                         .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
 
+            modelBuilder.Entity("Reqviora.Domain.Entities.ProjectPricing", b =>
+                {
+                    b.HasOne("Reqviora.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Reqviora.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Cascade)
- develop
                         .IsRequired();
                 });
 

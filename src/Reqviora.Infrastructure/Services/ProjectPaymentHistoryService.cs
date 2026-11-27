@@ -8,7 +8,7 @@ namespace Reqviora.Infrastructure.Services;
 public sealed class ProjectPaymentHistoryService(
     ReqvioraDbContext db) : IProjectPaymentHistory
 {
-    public async Task<PaymentHistoryPage?> ListAsync(
+    public async Task<ProjectPaymentHistoryPage?> ListAsync(
         Guid projectId,
         Guid actorId,
         int page,
@@ -44,7 +44,7 @@ public sealed class ProjectPaymentHistoryService(
             .Take(pageSize)
             .ToArrayAsync(cancellationToken);
 
-        return new PaymentHistoryPage(
+        return new ProjectPaymentHistoryPage(
             page,
             pageSize,
             total,
