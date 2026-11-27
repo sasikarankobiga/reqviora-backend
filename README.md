@@ -33,7 +33,6 @@ The API is available at `http://localhost:8080`. The `.env` file is ignored by G
 Keep credentials outside tracked configuration. From the repository root:
 
 ```bash
-dotnet user-secrets init --project src/Reqviora.Api
 dotnet user-secrets set "ConnectionStrings:ReqvioraDatabase" "Host=localhost;Port=5432;Database=reqviora;Username=postgres;Password=<your-password>" --project src/Reqviora.Api
 dotnet user-secrets set "Jwt:Key" "<a-random-secret-with-at-least-32-characters>" --project src/Reqviora.Api
 dotnet restore
@@ -43,6 +42,13 @@ dotnet run --project src/Reqviora.Api
 ```
 
 You can alternatively set `ConnectionStrings__ReqvioraDatabase` as an environment variable.
+
+For a hosted Supabase database, copy the session-pooler connection details from
+the project's **Connect** panel, add `SSL Mode=Require`, and save the resulting
+Npgsql connection string in the same user-secret key. Do not commit the database
+password. The local Flutter origins `http://localhost:3000`,
+`http://127.0.0.1:3000`, `http://localhost:5310`, and
+`http://127.0.0.1:5310` are allowed in the Development environment.
 
 ## Development endpoints
 
