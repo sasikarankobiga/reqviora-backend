@@ -401,6 +401,28 @@ public sealed class AccountSecurityEndpointsTests
     }
 
     [Fact]
+    public async Task User_can_revoke_one_owned_session_without_revoking_another()
+    {
+        using var factory = new AccountApiFactory();
+        factory.VerifySeedUser();
+        var secondSession = factory.AddSession(factory.User);
+        using var first = factory.AuthenticatedSessionClient(factory.User, factory.RefreshToken.Id);
+        using var second = factory.AuthenticatedSessionClient(factory.User, secondSession.Id);
+
+        var sessionsText = await first.GetStringAsync("/api/account-security/sessions");
+        Assert.Contains(factory.RefreshToken.Id.ToString(), sessionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(secondSession.Id.ToString(), sessionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("tokenHash", sessionsText, StringComparison.OrdinalIgnoreCase);
+
+        using var revoke = await first.DeleteAsync($"/api/account-security/sessions/{secondSession.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
+        using var revoked = await second.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        using var stillActive = await first.GetAsync("/api/users/me");
+        Assert.Equal(HttpStatusCode.OK, stillActive.StatusCode);
+    }
+
+    [Fact]
     public async Task Admin_dashboard_users_projects_and_audits_are_role_protected_and_paginated()
     {
         using var adminFactory = new AccountApiFactory(admin: true);
@@ -424,7 +446,10 @@ public sealed class AccountSecurityEndpointsTests
         Assert.Contains("account@example.test", await users.Content.ReadAsStringAsync());
         using var projects = await admin.GetAsync("/api/admin/projects?page=1&pageSize=10");
         Assert.True(projects.StatusCode == HttpStatusCode.OK, await projects.Content.ReadAsStringAsync());
-        Assert.Contains("Admin project", await projects.Content.ReadAsStringAsync());
+        var projectDirectory = await projects.Content.ReadAsStringAsync();
+        Assert.Contains("Admin project", projectDirectory);
+        Assert.DoesNotContain("Visible to administrators", projectDirectory, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ownerEmail", projectDirectory, StringComparison.OrdinalIgnoreCase);
         using var audits = await admin.GetAsync("/api/admin/audit-events?page=1&pageSize=10");
         Assert.True(audits.StatusCode == HttpStatusCode.OK, await audits.Content.ReadAsStringAsync());
         using var invalidPage = await admin.GetAsync("/api/admin/users?pageSize=101");
@@ -505,6 +530,31 @@ public sealed class AccountSecurityEndpointsTests
             client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", tokens.CreateAccessToken(authenticatedUser ?? User).Token);
             return client;
+        }
+
+        public HttpClient AuthenticatedSessionClient(User user, Guid sessionId)
+        {
+            var client = CreateClient();
+            using var scope = Services.CreateScope();
+            var tokens = scope.ServiceProvider.GetRequiredService<ITokenService>();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+                "Bearer", tokens.CreateAccessToken(user, sessionId).Token);
+            return client;
+        }
+
+        public RefreshToken AddSession(User user)
+        {
+            using var scope = Services.CreateScope();
+            var token = new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = Convert.ToHexString(SHA256.HashData(Guid.NewGuid().ToByteArray())),
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1)
+            };
+            var db = scope.ServiceProvider.GetRequiredService<ReqvioraDbContext>();
+            db.RefreshTokens.Add(token);
+            db.SaveChanges();
+            return token;
         }
 
         public User ReadUser()
