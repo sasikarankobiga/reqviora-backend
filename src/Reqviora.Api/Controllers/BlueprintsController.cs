@@ -3,7 +3,9 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Reqviora.Api.Features.ProjectWorkflow;
+using Reqviora.Application.Features.AIOrchestration;
 using Reqviora.Application.Features.FeaturesAndScreens;
 using Reqviora.Application.Features.RequirementReview;
 using Reqviora.Application.Features.UIGeneration;
@@ -67,6 +69,8 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
         Guid projectId, GenerateBlueprintRequest request,
         [FromServices] IRequirementReviewStore reviews,
         [FromServices] IBlueprintDraftGenerator generator,
+        [FromServices] IStructuredAiProvider ai,
+        [FromServices] IOptions<AiOptions> aiOptions,
         CancellationToken cancellationToken)
     {
         var userId = UserId;
@@ -94,7 +98,40 @@ public sealed class BlueprintsController(ReqvioraDbContext db, ProjectDraftServi
             confirmed.Add(snapshot.Requirement);
         }
 
-        var blueprint = InitialBlueprintPlanner.Generate(generator, projectId, confirmed);
+        BlueprintDocument blueprint;
+        if (aiOptions.Value.Enabled)
+        {
+            var requestId = Guid.NewGuid();
+            var input = JsonSerializer.Serialize(new
+            {
+                projectId,
+                requirements = confirmed.Select(requirement => new
+                {
+                    requirement.Id, requirement.Title, requirement.Description,
+                    evidence = requirement.Evidence.Select(evidence => new
+                    { evidence.SourceId, evidence.Locator, evidence.Quote })
+                })
+            });
+            var response = await ai.ExecuteAsync(new AiProviderRequest(projectId, requestId,
+                AiOperation.ScreenSuggestion, "en", input), cancellationToken);
+            if (response.Status != AiRunStatus.Completed || string.IsNullOrWhiteSpace(response.StructuredJson))
+                return Problem(title: "Blueprint AI generation was not completed.",
+                    statusCode: response.Status == AiRunStatus.Unavailable
+                        ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status502BadGateway);
+            try { blueprint = BlueprintJsonContract.Parse(response.StructuredJson); }
+            catch (ArgumentException) { return BadRequest("The AI provider returned an invalid Blueprint."); }
+            if (blueprint.ProjectId != projectId || !BlueprintContractValidator.Validate(blueprint).IsValid ||
+                !JsonElement.DeepEquals(JsonSerializer.SerializeToElement(InitialBlueprintPlanner.Generate(generator, projectId, confirmed).Requirements),
+                    JsonSerializer.SerializeToElement(blueprint.Requirements)))
+                return BadRequest("The AI provider Blueprint failed traceability or semantic validation.");
+        }
+        else
+        {
+            // Deterministic mode is deliberately retained for local and explicitly disabled
+            // deployments. It is never represented as provider-generated output.
+            blueprint = InitialBlueprintPlanner.Generate(generator, projectId, confirmed);
+            Response.Headers.Append("X-Reqviora-Blueprint-Generation", "deterministic");
+        }
         // Review storage is independent of the draft DB. Detect review changes observed
         // during planning; approval-time verification is still required separately.
         foreach (var requirement in confirmed)

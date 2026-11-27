@@ -17,8 +17,11 @@ public sealed class AdminController(ReqvioraDbContext db, TimeProvider clock) : 
     public sealed record AdminUserResponse(Guid Id, string Email, string DisplayName, bool EmailVerified,
         bool MfaEnabled, bool IsDisabled, DateTimeOffset? DisabledAt, string? DisabledReason,
         string Role, int SessionVersion);
-    public sealed record AdminProjectResponse(Guid Id, string Name, string Description, Guid OwnerId,
-        string OwnerEmail, Guid? WorkspaceId, int MemberCount, int DraftVersionCount, int ApprovedRevisionCount);
+    // The general administration directory is intentionally metadata-only. Project content,
+    // owner contact details, drafts, snapshots, and exports require a separately audited
+    // support workflow and must never be returned by a directory endpoint.
+    public sealed record AdminProjectResponse(Guid Id, string Name, Guid OwnerId,
+        Guid? WorkspaceId, int MemberCount, int DraftVersionCount, int ApprovedRevisionCount);
     public sealed record AdminAuditResponse(Guid Id, Guid? UserId, string Method, string Path,
         int StatusCode, string IpAddress, DateTimeOffset OccurredAt);
     public sealed record AccountStatusRequest(bool Disabled,
@@ -202,12 +205,10 @@ public sealed class AdminController(ReqvioraDbContext db, TimeProvider clock) : 
         IQueryable<Project> query, int skip, int take, CancellationToken ct)
     {
         var rows = await (from project in query
-            join owner in db.Users.AsNoTracking() on project.OwnerId equals owner.Id
             orderby project.Name, project.Id
             select new
             {
-                project.Id, project.Name, project.Description, project.OwnerId,
-                OwnerEmail = owner.Email, project.WorkspaceId
+                project.Id, project.Name, project.OwnerId, project.WorkspaceId
             }).Skip(skip).Take(take).ToArrayAsync(ct);
         var ids = rows.Select(row => row.Id).ToArray();
         var members = await db.ProjectMembers.AsNoTracking().Where(item => ids.Contains(item.ProjectId))
@@ -219,8 +220,8 @@ public sealed class AdminController(ReqvioraDbContext db, TimeProvider clock) : 
         var revisions = await db.ApprovedRevisions.AsNoTracking().Where(item => ids.Contains(item.ProjectId))
             .GroupBy(item => item.ProjectId).Select(group => new { Id = group.Key, Count = group.Count() })
             .ToDictionaryAsync(item => item.Id, item => item.Count, ct);
-        return rows.Select(row => new AdminProjectResponse(row.Id, row.Name, row.Description,
-            row.OwnerId, row.OwnerEmail, row.WorkspaceId,
+        return rows.Select(row => new AdminProjectResponse(row.Id, row.Name,
+            row.OwnerId, row.WorkspaceId,
             members.GetValueOrDefault(row.Id), versions.GetValueOrDefault(row.Id),
             revisions.GetValueOrDefault(row.Id))).ToArray();
     }

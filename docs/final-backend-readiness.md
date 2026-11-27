@@ -1,5 +1,9 @@
 # Final backend readiness
 
+## Final-five task follow-up
+
+The follow-up work on `feature/final-five-backend-tasks` is documented in `final-five-backend-tasks.md`. It adds immutable MCP approved-revision reads, least-privilege administrator project responses, independent user session controls, provider-backed Blueprint validation, and centralized administrator MFA policy enforcement. These changes require the final full regression and deployment verification before any production-readiness claim.
+
 ## 27 November 2026 reconciliation update
 
 The current readiness branch starts at `a5c5892c0d5c88329f606aebb66dcf01e4a38676` (`origin/develop` after PR #29). The merged PR had duplicate billing contracts and routes, malformed PostgreSQL and SQL Server model snapshots, and invalid JSON configuration. The completion branch resolves those verified defects while retaining the secure `PaymentOrders` lifecycle as the authoritative public billing API. Verification on this branch: Debug and Release builds passed with zero warnings/errors; xUnit passed 314 with 0 failures and 1 native-database skip; six contract suites passed 236 checks; both EF providers report no pending model changes; NuGet audit reports no vulnerable packages. Local Gitleaks, Docker, native database, live-provider, browser E2E, backup/restore, and production checks remain blocked by unavailable tooling/infrastructure and must pass CI/staging before release.

@@ -7,7 +7,7 @@ using Reqviora.Infrastructure.Persistence;
 
 namespace Reqviora.Api.Controllers;
 
-// G0-07 V1 scope: authenticated, read-only project context. Mutating tools stay disabled.
+// V1 is authenticated, read-only, and permanently bound to the approved revision in the grant.
 [ApiController, Authorize, Route("api/mcp/v1")]
 public sealed class McpV1Controller(
     ReqvioraDbContext db,
@@ -16,9 +16,9 @@ public sealed class McpV1Controller(
 {
     private static readonly object[] Tools =
     [
-        new { name = "reqviora.project.overview", description = "Read workflow counts for an owned project." },
-        new { name = "reqviora.blueprint.current", description = "Read the current draft Blueprint for an owned project." },
-        new { name = "reqviora.validation.latest", description = "Read the latest validation result for an owned project." }
+        new { name = "reqviora.project.overview", description = "Read metadata for the grant-bound approved project revision." },
+        new { name = "reqviora.blueprint.current", description = "Read the immutable Blueprint snapshot bound to the grant." },
+        new { name = "reqviora.validation.latest", description = "Read validation metadata for the grant-bound approved revision." }
     ];
 
     private static readonly object[] Resources =
@@ -50,28 +50,27 @@ public sealed class McpV1Controller(
         if (!Enabled()) return NotFound();
         var userId = ProjectApiAccess.RequireUserId(User);
         await ProjectApiAccess.RequireReadAsync(db, request.ProjectId, userId, cancellationToken);
-        if (!await grants.ValidateAsync(credential ?? string.Empty, request.ProjectId, userId, cancellationToken))
+        var grant = await grants.ResolveActiveAsync(credential ?? string.Empty, request.ProjectId, userId, cancellationToken);
+        if (grant is null)
             return Problem(title: "A valid active MCP project grant is required.", statusCode: 403);
-        var current = await ProjectApiAccess.FindCurrentVersionAsync(db, request.ProjectId, cancellationToken);
+        var revision = await db.ApprovedRevisions.AsNoTracking().SingleOrDefaultAsync(item =>
+            item.Id == grant.ApprovedRevisionId && item.ProjectId == request.ProjectId, cancellationToken);
+        if (revision is null)
+            return Problem(title: "The grant-bound approved revision is unavailable.", statusCode: 403);
+
         return request.Name switch
         {
             "reqviora.project.overview" => Ok(new
             {
                 projectId = request.ProjectId,
-                currentDraftVersion = current?.Version,
-                requirements = current is null ? 0 : await db.DraftRequirements.CountAsync(
-                    item => item.DraftVersionId == current.Id, cancellationToken),
-                features = current is null ? 0 : await db.DraftFeatures.CountAsync(
-                    item => item.DraftVersionId == current.Id, cancellationToken),
-                screens = current is null ? 0 : await db.DraftScreens.CountAsync(
-                    item => item.DraftVersionId == current.Id, cancellationToken)
+                approvedRevisionId = revision.Id,
+                revision.ApprovedAt
             }),
-            "reqviora.blueprint.current" => current?.BlueprintJson is null
+            "reqviora.blueprint.current" => string.IsNullOrWhiteSpace(revision.SnapshotJson)
                 ? NotFound()
-                : Content(current.BlueprintJson, "application/json"),
+                : Content(revision.SnapshotJson, "application/json"),
             "reqviora.validation.latest" => Ok(await db.ValidationRuns.AsNoTracking()
-                .Where(run => db.DesignDraftVersions.Any(version =>
-                    version.Id == run.DraftVersionId && version.ProjectId == request.ProjectId))
+                .Where(run => run.Id == revision.ValidationRunId)
                 .OrderByDescending(run => run.ValidatedAt)
                 .Select(run => new { run.Id, run.DraftVersionId, run.Passed, run.ValidatedAt })
                 .FirstOrDefaultAsync(cancellationToken)),

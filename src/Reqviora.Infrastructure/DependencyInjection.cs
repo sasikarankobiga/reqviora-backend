@@ -124,6 +124,8 @@ public static class DependencyInjection
                                 user.SessionVersion,
                                 user.Email,
                                 user.IsDisabled,
+                                user.MfaEnabled,
+                                user.MfaSecretProtected,
                                 RoleName = user.RoleId == null ? null : db.Roles
                                     .Where(role => role.Id == user.RoleId)
                                     .Select(role => role.Name)
@@ -166,6 +168,9 @@ public static class DependencyInjection
                             if (adminEmails.Contains(state.Email, StringComparer.OrdinalIgnoreCase) &&
                                 !identity.HasClaim(ClaimTypes.Role, "Administrator"))
                                 identity.AddClaim(new Claim(ClaimTypes.Role, "Administrator"));
+                            if (state.MfaEnabled && !string.IsNullOrWhiteSpace(state.MfaSecretProtected) &&
+                                !identity.HasClaim(TokenClaimTypes.AdministratorMfa, "true"))
+                                identity.AddClaim(new Claim(TokenClaimTypes.AdministratorMfa, "true"));
                         }
                     },
                     OnChallenge = async context =>
@@ -205,7 +210,9 @@ public static class DependencyInjection
                 .RequireAuthenticatedUser()
                 .Build();
             options.AddPolicy("Administrator", policy =>
-                policy.RequireAuthenticatedUser().RequireRole("Admin", "Administrator"));
+                policy.RequireAuthenticatedUser()
+                    .RequireRole("Admin", "Administrator")
+                    .RequireClaim(TokenClaimTypes.AdministratorMfa, "true"));
         });
         services.AddReqvioraDataProtection(configuration);
         services.AddScoped<LoginSecurityService>();

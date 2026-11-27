@@ -77,6 +77,25 @@ public sealed class McpGrantEndpointsTests
     }
 
     [Fact]
+    public async Task Grant_reads_its_immutable_approved_snapshot_not_a_newer_draft()
+    {
+        using var factory = new McpApiFactory();
+        var created = await factory.CreateGrantAsync();
+        using var owner = factory.Authenticated(factory.Owner);
+        using var call = new HttpRequestMessage(HttpMethod.Post, "/api/mcp/v1/tools/call")
+        {
+            Content = JsonContent.Create(new { name = "reqviora.blueprint.current", projectId = factory.Project.Id })
+        };
+        call.Headers.Add("X-MCP-Grant", created.Credential);
+
+        using var response = await owner.SendAsync(call);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("approved-snapshot", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("mutable-draft", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Admin_directory_is_protected_and_emergency_revocation_is_audited_and_idempotent()
     {
         using var factory = new McpApiFactory();
@@ -475,6 +494,7 @@ public sealed class McpGrantEndpointsTests
                 ProjectId = Project.Id,
                 Version = 1,
                 DraftJson = "{}",
+                BlueprintJson = "{\"source\":\"mutable-draft\"}",
                 SavedAt = Clock.GetUtcNow()
             };
             db.DesignDraftVersions.Add(version);
@@ -494,7 +514,7 @@ public sealed class McpGrantEndpointsTests
                 ValidationRunId = validation.Id,
                 ApprovedBy = Owner.Id,
                 ApprovedAt = Clock.GetUtcNow(),
-                SnapshotJson = "{}"
+                SnapshotJson = "{\"source\":\"approved-snapshot\"}"
             };
             db.ApprovedRevisions.Add(Revision);
             db.SaveChanges();
@@ -605,7 +625,9 @@ public sealed class McpGrantEndpointsTests
             PasswordHash = "not-used",
             DisplayName = email,
             EmailVerified = true,
-            MfaEnabled = mfa
+            MfaEnabled = mfa,
+            // The fixture exercises authorization only and never invokes OTP validation.
+            MfaSecretProtected = mfa ? "fixture-protected-mfa-secret" : null
         };
     }
 

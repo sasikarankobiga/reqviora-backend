@@ -13,6 +13,7 @@ public interface ITokenService
 public static class TokenClaimTypes
 {
     public const string SessionId = "reqviora_session_id";
+    public const string AdministratorMfa = "reqviora_administrator_mfa";
 }
 
 public sealed record AccessTokenResult(string Token, DateTimeOffset ExpiresAt);

@@ -144,12 +144,33 @@ public sealed class McpGrantService(ReqvioraDbContext db, TimeProvider clock) : 
         Guid ownerId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(credential)) return false;
+        return await ResolveActiveAsync(credential, projectId, ownerId, cancellationToken) is not null;
+    }
+
+    public async Task<McpGrantMetadata?> ResolveActiveAsync(
+        string credential,
+        Guid projectId,
+        Guid ownerId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(credential)) return null;
+
+        var now = clock.GetUtcNow();
         var hash = Hash(credential);
         var grant = await db.McpAccessGrants.AsNoTracking().SingleOrDefaultAsync(item =>
             item.SecretHash == hash && item.ProjectId == projectId && item.OwnerId == ownerId,
             cancellationToken);
-        return grant is not null && grant.RevokedAt is null && grant.ExpiresAt > clock.GetUtcNow();
+
+        // A grant is invalid if its originally approved revision is no longer available for
+        // the same project. This prevents a stale credential from being rebound to another
+        // revision after administrative data repair.
+        if (grant is null || grant.RevokedAt is not null || grant.ExpiresAt <= now ||
+            !await db.ApprovedRevisions.AsNoTracking().AnyAsync(revision =>
+                revision.Id == grant.ApprovedRevisionId && revision.ProjectId == projectId,
+                cancellationToken))
+            return null;
+
+        return ToMetadata(grant, now);
     }
 
     private async Task<McpGrantPage> PageAsync(
